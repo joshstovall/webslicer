@@ -36,6 +36,14 @@ export interface Filament {
   fanRampLayers?: number;
   minLayerTime?: number;
   minPrintSpeed?: number;
+  requirements?: {
+    abrasive?: boolean;
+    enclosure?: boolean;
+    minNozzle?: number;
+    bedRange?: [number, number];
+    feedSystem?: "AMS" | "AMS lite";
+    feedCompatibility?: "unspecified" | "compatible" | "incompatible";
+  };
 }
 export interface MultiMaterialSettings {
   purgeTower: boolean;
@@ -66,6 +74,7 @@ export interface Printer {
   bedOrigin?: [number, number];
   bedType?: string;
   mainsVoltage?: 110 | 220;
+  hardware?: { enclosed?: boolean; abrasiveTools?: number[] };
 }
 export interface Settings {
   layerHeight: number;

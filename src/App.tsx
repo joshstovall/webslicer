@@ -1,3 +1,4 @@
+import { PrinterHardware } from "./components/PrinterHardware";
 import { readGcodeMetadata } from "./lib/gcode-metadata";
 import {
   assemblyParts,
@@ -2377,6 +2378,7 @@ function App() {
           printer={project.printer}
           usedTools={usedTools}
           plate={project.activePlate}
+          models={activeModels}
           onChange={(filaments, multiMaterial) =>
             commit((p) => ({
               ...p,
@@ -2508,6 +2510,12 @@ function App() {
                   ...p,
                   multiMaterialMode: v as PrinterType["multiMaterialMode"],
                   toolCount: v === "single" ? 1 : Math.max(2, p.toolCount ?? 4),
+                  hardware: {
+                    ...p.hardware,
+                    abrasiveTools: p.hardware?.abrasiveTools?.filter(
+                      (t) => v === "toolchanger" || t === 0,
+                    ),
+                  },
                 }))
               }
             />
@@ -2525,10 +2533,20 @@ function App() {
                 typeof v === "number" &&
                 v >= 1 &&
                 v <= 64 &&
-                setPrinterDraft((p) => ({ ...p, toolCount: v }))
+                setPrinterDraft((p) => ({
+                  ...p,
+                  toolCount: v,
+                  hardware: {
+                    ...p.hardware,
+                    abrasiveTools: p.hardware?.abrasiveTools?.filter(
+                      (t) => t < v,
+                    ),
+                  },
+                }))
               }
             />
           </div>
+          <PrinterHardware printer={printerDraft} onChange={setPrinterDraft} />
           <Tabs defaultValue="start">
             <Tabs.List>
               <Tabs.Tab value="start">Start G-code</Tabs.Tab>
@@ -2958,7 +2976,9 @@ function App() {
                 </li>
                 <li>
                   Choose a printer and material. Review your machine’s start/end
-                  G-code.
+                  G-code and installed material hardware. In Manage filaments,
+                  configure each spool’s material requirements from its
+                  manufacturer data.
                 </li>
                 <li>
                   Move, rotate, scale, cut, duplicate, and arrange models on

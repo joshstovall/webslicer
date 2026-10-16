@@ -43,7 +43,7 @@ All six included vendor profiles have a 300°C nozzle ceiling. Bed ceilings are:
 
 X1 Carbon's mains supply can be set in Printer configuration and is retained in recovery/project files. The unspecified choice uses 110°C. Temperatures above a newly selected profile's limit are reported, not silently accepted for slicing. Active model/paint/support spools are checked before geometry work; unused slots need not match the selected machine. Shared-bed targets are always checked. After machine-template expansion, explicit M104/M109/M140/M190 commands are audited too, including S/R/H targets, heater-off, decimal command variants, compact syntax and numbered lines. Comments are excluded. Unknown firmware macros are not interpreted by this audit.
 
-Custom/generic machines retain configurable temperatures (150–350°C nozzle, 0–130°C bed); these are editor bounds, not manufacturer certification. Firmware-specific physical bounds, material compatibility, abrasiveness/enclosure requirements, bridge-specific cooling and broader auxiliary-fan controls still require further work under the full multi-color goal.
+Custom/generic machines retain configurable temperatures (150–350°C nozzle, 0–130°C bed); these are editor bounds, not manufacturer certification. Firmware-specific physical bounds, additional material/feed variants, bridge-specific cooling and broader auxiliary-fan controls still require further work under the full multi-color goal.
 
 ## Primary source references
 
@@ -52,3 +52,26 @@ Custom/generic machines retain configurable temperatures (150–350°C nozzle, 0
 - [Snapmaker U1 specifications](https://www.snapmaker.com/en-US/snapmaker-u1/specs): thermal limits and conditional throughput. No firmware source is copied into the application.
 - U1 Klipper revision `10f2f69714c059f1dee0423db4f515b8a01f5388`: [fan protocol](https://github.com/Snapmaker/u1-klipper/blob/10f2f69714c059f1dee0423db4f515b8a01f5388/klippy/extras/fan.py) and [extruder fan binding](https://github.com/Snapmaker/u1-klipper/blob/10f2f69714c059f1dee0423db4f515b8a01f5388/klippy/kinematics/extruder.py).
 - Bambu part/auxiliary fan indices also appear in the pinned machine sequences at Bambu Studio revision `79df7ae309be398ed30c9f397c13c9911c2edc57` (`resources/profiles/BBL/machine/`).
+
+
+## Material compatibility and installed hardware
+
+In **Manage filaments → Filament N material requirements**, enter a material code and the exact spool's enclosure, abrasion, minimum nozzle diameter and optional shared-bed temperature range. Codes such as PA6-CF and PVA are supported independently of the cosmetic spool name. Selecting another material or changing its code clears the previous product's requirement overrides. Process-only edits preserve them; multi-spool process presets leave them intact. Custom material codes remain visible in the global material selector.
+
+**Printer configuration → Installed material hardware** records an enclosure/top cover and heads equipped with abrasion-resistant nozzles and compatible feed gears. X1 Carbon defaults to enclosed with an abrasion-ready head; P1S defaults to enclosed without that upgrade. P1P, A1, A1 mini and U1 default to open without abrasion-ready heads. Generic machines leave enclosure unspecified. All AMS slots map to physical head 1; U1's four heads have separate selections. These controls record installed equipment; they do not change the vendor profile's 0.4 mm nozzle diameter or certify modifications.
+
+Requirements are conservative, editable assumptions, not a complete filament-product database. ABS, ASA, PA, PC, PET and POM default to requiring enclosure; CF/GF, carbon/glass-fiber and glow identifiers default to abrasive. The default minimum nozzle is 0.4 mm for abrasive material and 0.2 mm otherwise. Exact products can require larger diameters or different hardware. No universal bed range is inferred: enabling the range editor starts with an editable 50–70°C interval, which must be replaced with the manufacturer's values. Both first-layer and normal bed targets must satisfy every used spool; disjoint ranges are reported explicitly. Unknown families retain a warning even with manual requirements.
+
+Current Bambu profiles use AMS (X1/P1) or AMS lite (A1/A1 mini). Generic TPU/TPE requires an explicit manufacturer-approved feed compatibility setting for the exact spool. An AMS approval does not carry over to AMS lite. Unspecified flexible feed compatibility still blocks slicing. Abrasive products with unspecified feeder compatibility receive a warning even on hardened printer hardware; soluble PVA/BVOH receives a dryness reminder. External-spool and AMS HT bypass variants are not represented by these profiles. Setting a spool as compatible records the operator's manufacturer-data decision, not a verification by the application.
+
+Checks cover visible models on the selected plate, their painted tools, and enabled support tools. Unused/hidden spools do not block slicing. Linked or painted mixed-family parts warn about bonding/shrinkage; unrelated objects and support-only materials do not create that joint warning. U1 multi-material flexible towers receive a rigidity reminder. Requirements appear before slicing, errors stop direct slicing calls before engine creation, and warnings persist in the generated preview. Hardware and spool requirements survive local recovery and portable projects; malformed values are rejected during import.
+
+Primary hardware/feed sources checked October 16, 2026:
+
+- [U1 specifications](https://www.snapmaker.com/en-US/snapmaker-u1/specs): stock stainless nozzle, basic material list, top-cover material list and hardened-nozzle combination.
+- [X1 Carbon specifications](https://public-cdn.bambulab.com/store/bambulab-X1-carbon-tech-specs.pdf?v=20250715085516): enclosed body, hardened nozzle and extruder gears.
+- [P1S manufacturer listing](https://us.store.bambulab.com/collections/3d-printer/products/p1s): stainless stock nozzle and extruder/hotend upgrades for fiber-reinforced materials.
+- [Bambu AMS quick-start guidance](https://cdn1.bambulab.com/documentation/quick-start-695a11c5f06d6/Y.BC.BQ.Z0056-09_BLP001-%E5%8C%85%E8%A3%85-%E5%A5%97%E8%A3%85%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8%28%E8%8B%B1%E6%96%87%29.pdf): soft TPU and damp PVA feed restrictions.
+- [Bambu TPU 85A/90A product data](https://us.store.bambulab.com/products/tpu-85a-tpu-90a/): compatibility depends on exact flexible product, printer, nozzle and feed path.
+
+These checks do not predict adhesion, dimensional shrinkage, moisture content, enclosure temperatures, emissions or physical tower strength. Exact material testing and additional firmware/nozzle variants remain part of the broader unfinished multi-color scope.

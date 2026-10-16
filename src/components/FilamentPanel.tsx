@@ -1,3 +1,5 @@
+import { MaterialRequirements } from "./MaterialRequirements";
+import { materialCompatibility } from "../lib/material-compatibility";
 import {
   Accordion,
   Alert,
@@ -14,6 +16,7 @@ import {
 import { useState } from "react";
 import type {
   Filament,
+  Model,
   MultiMaterialSettings,
   Printer,
   Settings,
@@ -33,6 +36,7 @@ interface Props {
   settings: Settings;
   usedTools: number[];
   plate: number;
+  models: Model[];
   onChange: (filaments: Filament[], multi: MultiMaterialSettings) => void;
 }
 export function FilamentPanel({
@@ -42,6 +46,7 @@ export function FilamentPanel({
   settings,
   usedTools,
   plate,
+  models,
   onChange,
 }: Props) {
   const multi = independentPurgeBudgets(storedMulti);
@@ -65,6 +70,13 @@ export function FilamentPanel({
       multi,
     );
   const maxTemperature = thermalLimits(printer)?.nozzle ?? 350;
+  const compatibility = materialCompatibility(
+    models,
+    printer,
+    filaments,
+    settings,
+    multi,
+  );
   const capacity = printer.toolCount ?? 1;
   return (
     <Stack gap="md">
@@ -87,6 +99,16 @@ export function FilamentPanel({
         Each filament has its own temperature, flow, fan ramp and layer cooling.
         The bed temperature is shared; set it in Temperature &amp; cooling.
       </Text>
+      {compatibility.errors.map((message) => (
+        <Alert key={message} color="red" title="Material compatibility">
+          {message}
+        </Alert>
+      ))}
+      {compatibility.warnings.map((message) => (
+        <Alert key={message} color="yellow" title="Check material requirements">
+          {message}
+        </Alert>
+      ))}
       <Accordion multiple defaultValue={["0"]}>
         {filaments.map((f, i) => (
           <Accordion.Item value={String(i)} key={i}>
@@ -124,13 +146,26 @@ export function FilamentPanel({
                 <Select
                   label={`Filament ${i + 1} material`}
                   value={f.material}
-                  data={MATERIALS.map((m) => m.name)}
+                  data={[
+                    ...MATERIALS.map((m) => m.name),
+                    ...(!MATERIALS.some((m) => m.name === f.material) &&
+                    f.material !== "Custom"
+                      ? [f.material]
+                      : []),
+                    "Custom",
+                  ]}
                   allowDeselect={false}
                   onChange={(name) => {
                     const m = MATERIALS.find((m) => m.name === name);
+                    if (name === "Custom")
+                      update(i, {
+                        material: "Custom",
+                        requirements: undefined,
+                      });
                     if (m)
                       update(i, {
                         material: m.name,
+                        requirements: undefined,
                         nozzleTemp: m.nozzle,
                         firstNozzleTemp: m.nozzle + 5,
                         density: m.density,
@@ -327,6 +362,12 @@ export function FilamentPanel({
                     }
                   />
                 </div>
+                <MaterialRequirements
+                  filament={f}
+                  index={i}
+                  printer={printer}
+                  onChange={(patch) => update(i, patch)}
+                />
                 {i === filaments.length - 1 && i > 0 && (
                   <Button
                     variant="subtle"

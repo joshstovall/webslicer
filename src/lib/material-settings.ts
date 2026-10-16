@@ -44,7 +44,14 @@ export function applySettingsPatch(
       .filter((key) => patch[key] !== undefined)
       .map((key) => [key, patch[key]]),
   );
-  const filament = { ...filaments[0], ...material };
+  const filament = {
+    ...filaments[0],
+    ...material,
+    requirements:
+      patch.material !== undefined && patch.material !== filaments[0].material
+        ? undefined
+        : filaments[0].requirements,
+  };
   return {
     ...project,
     settings: settingsForFilament(settings, filament),

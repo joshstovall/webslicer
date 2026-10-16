@@ -1,3 +1,4 @@
+import { materialCompatibility } from "./material-compatibility";
 import type {
   Filament,
   Model,
@@ -201,5 +202,9 @@ export function materialErrors(
     !validPurgeOverrides(multi.flushVolumes, 0)
   )
     errors.push("Station flushing volumes must be between 0 and 2000 mm³.");
+  errors.push(
+    ...materialCompatibility(models, printer, filaments, settings, multi)
+      .errors,
+  );
   return errors;
 }

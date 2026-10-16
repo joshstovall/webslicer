@@ -1,3 +1,4 @@
+import { materialCompatibility } from "./material-compatibility";
 import { createU1Job } from "./u1-job";
 import { printThumbnails } from "./print-package";
 import type {
@@ -99,7 +100,16 @@ export async function slicePlate(
             cost: settings.cost,
             filaments,
           });
-          result.warnings.push(...cooled.warnings);
+          result.warnings.push(
+            ...cooled.warnings,
+            ...materialCompatibility(
+              models,
+              printer,
+              filaments,
+              settings,
+              multi,
+            ).warnings,
+          );
           if (!result.layers.length)
             throw new Error("No printable layers were generated.");
           const excluded = bedExclusions(printer, false);

@@ -1,3 +1,8 @@
+import {
+  validMaterialRequirements,
+  validPrinterHardware,
+  validMaterialCode,
+} from "./material-compatibility";
 import { get, set } from "idb-keyval";
 import { strToU8, strFromU8, gzipSync, gunzipSync } from "fflate";
 import type { Project, Model } from "../types";
@@ -112,6 +117,8 @@ export function validateProject(p: unknown): Project {
     !(v.printer.filament > 0)
   )
     throw new Error("Invalid printer dimensions.");
+  if (!validPrinterHardware(v.printer))
+    throw new Error("Invalid printer hardware configuration.");
   for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
     const current = (v.settings as unknown as Record<string, unknown>)[key];
     if (
@@ -160,10 +167,12 @@ export function validateProject(p: unknown): Project {
     if (
       !f ||
       typeof f.name !== "string" ||
-      typeof f.material !== "string" ||
+      !validMaterialCode(f.material) ||
       !/^#[0-9a-f]{6}$/i.test(f.color)
     )
       throw new Error("Invalid filament data.");
+    if (!validMaterialRequirements(f.requirements))
+      throw new Error("Invalid filament material requirements.");
     if (!validCoolingSettings(f, { ...DEFAULT_SETTINGS, ...v.settings }))
       throw new Error("Invalid filament layer cooling settings.");
     for (const [key, min, max] of [

@@ -445,10 +445,15 @@ export function SettingsPanel({
         />
         <Select
           aria-label="Material"
-          data={MATERIALS.map((m) => ({
-            value: m.name,
-            label: `Generic ${m.name}`,
-          }))}
+          data={[
+            ...MATERIALS.map((m) => ({
+              value: m.name,
+              label: `Generic ${m.name}`,
+            })),
+            ...(!MATERIALS.some((m) => m.name === s.material)
+              ? [{ value: s.material, label: s.material }]
+              : []),
+          ]}
           value={s.material}
           onChange={(v) => {
             const m = MATERIALS.find((m) => m.name === v);
