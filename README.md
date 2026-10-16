@@ -36,13 +36,13 @@ TEST_URL=http://localhost:4174/webslicer/ npm run test:e2e -- tests/e2e/workspac
 ## Features
 
 - Touch orbit, pinch zoom, and two-finger pan; desktop camera controls and keyboard shortcuts.
-- Import binary/ASCII STL, multipart OBJ, and 3MF components with material assignments and relative transforms; inspect linear G-code and Bambu print packages.
+- Import binary/ASCII STL, multipart OBJ, and 3MF components with material assignments and relative transforms; inspect linear G-code and Bambu print packages with selectable plates and per-plate material metadata.
 - Select, rename, move, rotate, uniformly/nonuniformly scale, ground, fit to bed, and duplicate models and linked assemblies. Link selected parts into multi-color assemblies, detach or separate them, and set material overlap priority. Assign filament by part, create linked color bands by height, or paint surfaces with round-brush, flat-face and replace-color tools.
 - Cap horizontal cuts, split disconnected parts, and lay models on a side.
 - Arrange models, detect bounding-box collisions, check build-volume/adhesion clearance, and manage multiple build plates.
 - Starter calibration cube, cylinder, sphere, torus, and watertight hollow helix planter.
 - Printer dimensions, nozzle/filament sizes, editable machine G-code, per-filament settings, support filament, purge tower, directional purge volumes, and PLA/PETG/ABS/ASA/TPU presets.
-- Bambu X1 Carbon, P1S, P1P, A1 and A1 mini AMS profiles, plus the four-head Snapmaker U1 (0.4 mm variants). Bambu print packages include thumbnails and filament metadata.
+- Bambu X1 Carbon, P1S, P1P, A1 and A1 mini AMS profiles, plus the four-head Snapmaker U1 (0.4 mm variants). Bambu print packages include thumbnails and filament metadata. Imported archives retain their original bytes for download; see `docs/print-packages.md` for plate selection and metadata handling.
 - Layer heights, adaptive layers, wall order, thin walls, seam placement, spiral vase, top/bottom layers, and six infill patterns.
 - Automatic normal/tree supports, support angle/density/separation, skirt/brim/raft, print/travel speeds, volumetric flow, temperature, cooling, retraction, Z hop, and flow ratio.
 - Real slicing with progress and cancellation. A job owns an isolated frame and its workers, all removed on cancellation/completion.

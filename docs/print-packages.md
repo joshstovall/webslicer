@@ -1,0 +1,17 @@
+# Multi-plate print packages
+
+The archive preview indexes all `.gcode` jobs, orders numbered plates numerically, and offers an **Archive plate** selector on desktop and phone layouts. The selected plate supplies the viewport name, machine dimensions, nozzle diameter, filament colors and material types. Switching does not replace the editable project. **Download original** returns the complete input archive byte for byte, including plates that have not been previewed.
+
+`model_settings.config` associates paths with plate IDs/names. `slice_info.config` supplies per-plate machine and filament information; its filament IDs are one-based while G-code tool IDs are zero-based. Sparse IDs retain their positions rather than collapsing the palette. Plate-specific metadata takes precedence over global project metadata. Global filament names, densities, costs and diameter remain available where provided. Six-digit RGB and eight-digit RGBA colors are accepted; preview filament colors use RGB. Preview does not rewrite the archive's physical AMS assignments.
+
+Known Bambu model IDs resolve to the existing printer presets. Global model/profile names provide a fallback, with nozzle-profile suffixes handled explicitly so A1 mini is not mistaken for A1. An unrecognized explicit machine produces a warning and uses the current build volume for viewing. Bad optional JSON/XML metadata or inconsistent MD5 checksums are reported without discarding readable G-code. Duplicate slice metadata for a plate is not chosen arbitrarily.
+
+The reader scans ZIP metadata before decompressing a selected job. It never decompresses unselected G-code. A regression deliberately corrupts an unselected DEFLATE stream and confirms that another plate is still readable. Input archives and individual expanded jobs are limited to 100 MB, plate count to 200, and each optional metadata document to 4 MB. Empty/oversized jobs remain listed but disabled. Duplicate normalized G-code paths are rejected. Failed selections retain the previous valid preview; leaving preview or changing the editable project invalidates pending plate selections.
+
+The browser uses its native XML parser. `@xmldom/xmldom` is a development-only test dependency; it is not bundled into the application. MD5 is the container's integrity checksum, not an authentication mechanism.
+
+The field and indexing contracts were checked against [Bambu Studio's 3MF reader/writer at revision 79df7ae](https://github.com/bambulab/BambuStudio/blob/79df7ae309be398ed30c9f397c13c9911c2edc57/src/libslic3r/Format/bbs_3mf.cpp). The application implements its own reader and does not bundle upstream source.
+
+Tests cover numbered and custom job paths, ZIP order independent of plate order, per-plate names/machines/materials, sparse and invalid tool IDs, optional-metadata failures, checksum mismatch, duplicate metadata, oversized jobs, and A1/A1 mini disambiguation. Browser tests switch between plates on desktop and phone, verify material colors and failed-selection recovery, and compare downloaded bytes to the original.
+
+Remaining broader fidelity work includes native U1 job metadata, further vendor project/model import coverage, and printer firmware assumptions. Displayed time/material estimates are computed from parsed G-code; vendor-declared prediction/usage summaries do not replace them. Arc visualization retains its existing explicit limitation. These constraints remain part of the full-goal audit rather than being implied complete by archive plate selection.

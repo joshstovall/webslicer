@@ -203,6 +203,8 @@ function App() {
     [errors, setErrors] = useState<string[]>([]),
     [importing, setImporting] = useState(false),
     [loadingPrinter, setLoadingPrinter] = useState(false);
+  const [loadingPackage, setLoadingPackage] = useState(false);
+  const previewRequest = useRef(0);
   const [printerDraft, setPrinterDraft] = useState<PrinterType>(
       project.printer,
     ),
@@ -237,6 +239,9 @@ function App() {
     preview && result?.source?.printer
       ? result.source.printer
       : project.printer;
+  const archivePlate = preview
+    ? result?.source?.plates?.find((p) => p.path === result.source?.platePath)
+    : undefined;
   const usedTools = useMemo(() => {
     const tools = new Set<number>();
     for (const model of project.models) {
@@ -255,6 +260,8 @@ function App() {
   const commit = useCallback(
     (next: Project | ((p: Project) => Project), record = true) => {
       if (abortRef.current) return;
+      previewRequest.current++;
+      setLoadingPackage(false);
       const old = projectRef.current;
       const p = typeof next === "function" ? next(old) : next;
       if (record) history.current = [...history.current.slice(-39), old];
@@ -271,6 +278,8 @@ function App() {
   );
   const undo = useCallback(() => {
     if (abortRef.current || !history.current.length) return;
+    previewRequest.current++;
+    setLoadingPackage(false);
     const old = history.current.pop()!;
     future.current.push(projectRef.current);
     projectRef.current = old;
@@ -282,6 +291,8 @@ function App() {
   }, []);
   const redo = useCallback(() => {
     if (abortRef.current || !future.current.length) return;
+    previewRequest.current++;
+    setLoadingPackage(false);
     const p = future.current.pop()!;
     history.current.push(projectRef.current);
     projectRef.current = p;
@@ -447,6 +458,8 @@ function App() {
     setModal(null);
   }
   async function importFiles(files: FileList | File[]) {
+    previewRequest.current++;
+    setLoadingPackage(false);
     setImporting(true);
     try {
       for (const file of Array.from(files)) {
@@ -469,7 +482,9 @@ function App() {
             {
               filaments: printPackage?.filaments,
               diameter:
-                printPackage?.printer?.filament ?? project.printer.filament,
+                printPackage?.filamentDiameter ??
+                printPackage?.printer?.filament ??
+                project.printer.filament,
               density: project.settings.density,
               cost: project.settings.cost,
             },
@@ -478,7 +493,13 @@ function App() {
             throw new Error("No extrusion paths found in this G-code.");
           setResult({
             ...parsed,
-            source: { file, printer: printPackage?.printer },
+            warnings: [...parsed.warnings, ...(printPackage?.warnings ?? [])],
+            source: {
+              file,
+              printer: printPackage?.printer,
+              plates: printPackage?.plates,
+              platePath: printPackage?.path,
+            },
           });
           setLayer(parsed.layers.length - 1);
           setPreview(true);
@@ -526,7 +547,51 @@ function App() {
       if (fileInput.current) fileInput.current.value = "";
     }
   }
+  async function selectPackagePlate(path: string) {
+    const file = result?.source?.file;
+    if (!file) return;
+    const request = ++previewRequest.current;
+    setLoadingPackage(true);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (request !== previewRequest.current) return;
+      const job = readPrintPackage(bytes, path);
+      if (!job) throw new Error("This file contains no print plates.");
+      const parsed = parseGcode(job.gcode, {
+        filaments: job.filaments,
+        diameter:
+          job.filamentDiameter ??
+          job.printer?.filament ??
+          project.printer.filament,
+        density: project.settings.density,
+        cost: project.settings.cost,
+      });
+      if (!parsed.layers.length)
+        throw new Error("No extrusion paths found on this plate.");
+      if (request !== previewRequest.current) return;
+      setResult({
+        ...parsed,
+        warnings: [...parsed.warnings, ...job.warnings],
+        source: {
+          file,
+          printer: job.printer,
+          plates: job.plates,
+          platePath: job.path,
+        },
+      });
+      setLayer(parsed.layers.length - 1);
+      setPlaying(false);
+      setPreview(true);
+    } catch (error) {
+      if (request === previewRequest.current)
+        notify((error as Error).message, "red");
+    } finally {
+      if (request === previewRequest.current) setLoadingPackage(false);
+    }
+  }
   async function runSlice() {
+    previewRequest.current++;
+    setLoadingPackage(false);
     const s = project.settings;
     const margin =
       s.adhesion === "brim"
@@ -1498,7 +1563,11 @@ function App() {
         <nav className="workflow-tabs" aria-label="Workflow">
           <button
             className={!preview ? "active" : ""}
-            onClick={() => setPreview(false)}
+            onClick={() => {
+              previewRequest.current++;
+              setLoadingPackage(false);
+              setPreview(false);
+            }}
           >
             <Box size={15} />
             <span>Prepare</span>
@@ -1578,10 +1647,25 @@ function App() {
           <div className="plate-heading">
             <div className="plate-label">
               <span className="plate-number">
-                {String(project.activePlate).padStart(2, "0")}
+                {archivePlate && archivePlate.index === undefined
+                  ? "—"
+                  : String(archivePlate?.index ?? project.activePlate).padStart(
+                      2,
+                      "0",
+                    )}
               </span>
               <div>
-                <strong>Build plate {project.activePlate}</strong>
+                <strong
+                  title={archivePlate?.name}
+                  style={{
+                    maxWidth: "min(50vw, 320px)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {archivePlate?.name ?? `Build plate ${project.activePlate}`}
+                </strong>
                 <span>
                   {viewportPrinter.bed[0]} × {viewportPrinter.bed[1]} mm{" "}
                   <i>·</i>{" "}
@@ -1768,6 +1852,29 @@ function App() {
                     </span>
                   </div>
                 </div>
+                {result.source?.plates && (
+                  <Select
+                    label="Archive plate"
+                    aria-label="Archive plate"
+                    size="xs"
+                    mb="sm"
+                    searchable
+                    allowDeselect={false}
+                    value={result.source.platePath}
+                    disabled={loadingPackage}
+                    data={result.source.plates.map((p) => ({
+                      value: p.path,
+                      label: `${p.index === undefined ? "" : `${p.index}. `}${p.name}${p.unavailable ? ` · ${p.unavailable}` : ""}`,
+                      disabled: !!p.unavailable,
+                    }))}
+                    onChange={(path) => path && selectPackagePlate(path)}
+                    description={
+                      loadingPackage
+                        ? "Loading plate…"
+                        : `${result.source.plates.length} ${result.source.plates.length === 1 ? "plate" : "plates"} in the original archive`
+                    }
+                  />
+                )}
                 <div className="print-estimates">
                   <div>
                     <span>Motion time*</span>
@@ -2051,6 +2158,8 @@ function App() {
                   <Button
                     variant="default"
                     onClick={() => {
+                      previewRequest.current++;
+                      setLoadingPackage(false);
                       setPreview(false);
                     }}
                   >

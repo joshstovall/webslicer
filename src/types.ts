@@ -122,7 +122,12 @@ export interface ToolpathLayer {
   tools: Uint8Array;
 }
 export interface SliceResult {
-  source?: { file: File; printer?: Printer };
+  source?: {
+    file: File;
+    printer?: Printer;
+    plates?: PrintPackagePlate[];
+    platePath?: string;
+  };
   gcode: string;
   layers: ToolpathLayer[];
   filament: number;
@@ -139,6 +144,13 @@ export interface SliceResult {
     weight: number;
     cost: number;
   }[];
+}
+export interface PrintPackagePlate {
+  path: string;
+  name: string;
+  index?: number;
+  size: number;
+  unavailable?: string;
 }
 export const FEATURE_COLORS = [
   "#478d69",
