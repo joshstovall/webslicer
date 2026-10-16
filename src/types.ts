@@ -124,12 +124,20 @@ export interface ToolpathLayer {
   speeds: Float32Array;
   tools: Uint8Array;
 }
+export interface PrintEstimates {
+  seconds?: number;
+  filament?: number;
+  weight?: number;
+  tools: { tool: number; filament?: number; weight?: number }[];
+  basis: string;
+}
 export interface SliceResult {
   source?: {
     file: File;
     printer?: Printer;
     plates?: PrintPackagePlate[];
     platePath?: string;
+    estimates?: PrintEstimates;
   };
   gcode: string;
   layers: ToolpathLayer[];

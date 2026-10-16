@@ -3,6 +3,8 @@ import type { Filament, Printer, PrintPackagePlate } from "../types";
 import { DEFAULT_SETTINGS } from "./profiles";
 import { defaultFilament } from "./multimaterial";
 import { VENDOR_PRINTERS } from "./vendor-printers";
+import { readGcodeMetadata } from "./gcode-metadata";
+import type { PrintEstimates } from "../types";
 import { md5 } from "./md5";
 
 const MAX_GCODE = 100 * 1024 * 1024;
@@ -17,6 +19,7 @@ const modelIds: Record<string, string> = {
   C11: "bambu-p1p",
   N2S: "bambu-a1",
   N1: "bambu-a1-mini",
+  SM_U1: "snapmaker-u1",
 };
 const pathKey = (path: string) =>
   path
@@ -47,6 +50,7 @@ export interface ReadPrintPackage {
   printer?: Printer;
   filamentDiameter?: number;
   warnings: string[];
+  estimates?: PrintEstimates;
 }
 function xmlPlates(
   bytes: Uint8Array | undefined,
@@ -183,6 +187,8 @@ export function readPrintPackage(
         entry.originalSize <= 256),
   });
   const gcode = files[plate.path];
+  const text = strFromU8(gcode);
+  const embedded = readGcodeMetadata(text);
   const checksum = Object.entries(files).find(
     ([name]) => pathKey(name) === pathKey(`${plate.path}.md5`),
   )?.[1];
@@ -210,6 +216,7 @@ export function readPrintPackage(
   const array = (key: string): unknown[] =>
     Array.isArray(data[key]) ? (data[key] as unknown[]).slice(0, 64) : [];
   const count = Math.max(
+    embedded.filaments?.length ?? 0,
     ...[
       "filament_colour",
       "filament_type",
@@ -220,7 +227,8 @@ export function readPrintPackage(
   );
   let filaments: Filament[] | undefined = count
     ? Array.from({ length: count }, (_, i) => {
-        const base = defaultFilament(DEFAULT_SETTINGS, i),
+        const base =
+            embedded.filaments?.[i] ?? defaultFilament(DEFAULT_SETTINGS, i),
           color = colorOf(array("filament_colour")[i]);
         return {
           ...base,
@@ -298,13 +306,59 @@ export function readPrintPackage(
     warnings.push(
       `Unrecognized package printer: ${String(modelId || model).slice(0, 100)}. Preview uses the current build volume.`,
     );
+  const ids = new Map<number, number>();
+  for (const entry of slice?.filaments ?? []) {
+    const id = finite(entry.id, 1, 64);
+    if (id !== undefined && Number.isInteger(id))
+      ids.set(id, (ids.get(id) ?? 0) + 1);
+  }
+  if ([...ids.values()].some((n) => n > 1))
+    warnings.push("Duplicate filament usage entries were ignored.");
+  const tools = (slice?.filaments ?? []).flatMap((entry) => {
+    const id = finite(entry.id, 1, 64);
+    if (id === undefined || !Number.isInteger(id) || ids.get(id)! > 1)
+      return [];
+    const meters = finite(entry.used_m, 0, 1e6);
+    const weight = finite(entry.used_g, 0, 1e6);
+    return meters !== undefined || weight !== undefined
+      ? [
+          {
+            tool: id - 1,
+            filament: meters === undefined ? undefined : meters * 1000,
+            weight,
+          },
+        ]
+      : [];
+  });
+  const completeUsage =
+    tools.length > 0 && tools.length === slice?.filaments.length;
+  const seconds = finite(slice?.values.prediction, 0, 365 * 86400);
+  const weight =
+    finite(slice?.values.weight, 0, 1e6) ??
+    (completeUsage && tools.every((t) => t.weight !== undefined)
+      ? tools.reduce((sum, t) => sum + t.weight!, 0)
+      : undefined);
+  const estimates: PrintEstimates | undefined =
+    seconds !== undefined || weight !== undefined || tools.length
+      ? {
+          seconds,
+          weight,
+          tools,
+          basis: "Archive plate metadata",
+          filament:
+            completeUsage && tools.every((t) => t.filament !== undefined)
+              ? tools.reduce((sum, t) => sum + t.filament!, 0)
+              : undefined,
+        }
+      : embedded.estimates;
   return {
-    gcode: strFromU8(gcode),
+    gcode: text,
     path: plate.path,
     plates,
-    filaments,
-    printer,
-    filamentDiameter,
-    warnings,
+    filaments: filaments ?? embedded.filaments,
+    printer: printer ?? (!modelId && !model ? embedded.printer : undefined),
+    filamentDiameter: filamentDiameter ?? embedded.filamentDiameter,
+    estimates,
+    warnings: [...warnings, ...(!modelId && !model ? embedded.warnings : [])],
   };
 }

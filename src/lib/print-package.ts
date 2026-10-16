@@ -92,24 +92,54 @@ export function createPrintPackage(
   }
   return zipSync(files, { level: 6 });
 }
-export function printThumbnail(
+function renderThumbnail(
   result: SliceResult,
-  printer: Printer,
+  _printer: Printer,
   size = 512,
-): Uint8Array {
+): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Cannot create print thumbnail.");
   ctx.fillStyle = "#f5f5f0";
   ctx.fillRect(0, 0, size, size);
-  const scale =
-    (size / Math.max(printer.bed[0] + printer.bed[1], printer.bed[2] * 2)) *
-    0.85;
-  const point = (x: number, y: number, z: number) => [
-    size / 2 + (x - y) * scale,
-    size * 0.8 - (x + y) * scale * 0.38 - z * scale,
+  // Fit actual deposited paths, including the tower, so small models remain
+  // readable on a printer screen regardless of bed size or machine origin.
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  const project = (x: number, y: number, z: number) => [
+    x - y,
+    -(x + y) * 0.38 - z,
   ];
+  for (const layer of result.layers)
+    for (let i = 0; i < layer.features.length; i++) {
+      if (layer.features[i] === 4) continue;
+      for (const endpoint of [0, 3]) {
+        const a = i * 6 + endpoint;
+        const [x, y] = project(
+          layer.segments[a],
+          layer.segments[a + 1],
+          layer.segments[a + 2],
+        );
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  const scale = (size * 0.88) / Math.max(maxX - minX, maxY - minY, 1);
+  const centerX = (minX + maxX) / 2,
+    centerY = (minY + maxY) / 2;
+  const point = (x: number, y: number, z: number) => {
+    const [px, py] = project(x, y, z);
+    return [
+      size / 2 + (px - centerX) * scale,
+      size / 2 + (py - centerY) * scale,
+    ];
+  };
+  const colors = new Map(result.tools.map((t) => [t.tool, t.color]));
   ctx.lineWidth = Math.max(0.6, size / 512);
   for (const layer of result.layers)
     for (let i = 0; i < layer.features.length; i++) {
@@ -129,16 +159,40 @@ export function printThumbnail(
             number,
           ]),
         );
-      ctx.strokeStyle =
-        result.tools.find((t) => t.tool === layer.tools[i])?.color ?? "#91ad87";
+      ctx.strokeStyle = colors.get(layer.tools[i]) ?? "#91ad87";
       ctx.beginPath();
       ctx.moveTo(p[0], p[1]);
       ctx.lineTo(q[0], q[1]);
       ctx.stroke();
     }
+  return canvas;
+}
+function pngBytes(canvas: HTMLCanvasElement): Uint8Array {
   return Uint8Array.from(
     atob(canvas.toDataURL("image/png").split(",")[1]),
     (c) => c.charCodeAt(0),
   );
+}
+export function printThumbnail(
+  result: SliceResult,
+  printer: Printer,
+  size = 512,
+): Uint8Array {
+  return pngBytes(renderThumbnail(result, printer, size));
+}
+/** Render geometry once; derive the smaller printer preview by resampling. */
+export function printThumbnails(
+  result: SliceResult,
+  printer: Printer,
+  largeSize = 512,
+  smallSize = 128,
+) {
+  const large = renderThumbnail(result, printer, largeSize);
+  const small = document.createElement("canvas");
+  small.width = small.height = smallSize;
+  const context = small.getContext("2d");
+  if (!context) throw new Error("Cannot create print thumbnail.");
+  context.drawImage(large, 0, 0, smallSize, smallSize);
+  return { large: pngBytes(large), small: pngBytes(small) };
 }
 export { readPrintPackage } from "./print-package-reader";

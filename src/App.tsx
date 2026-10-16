@@ -1,3 +1,4 @@
+import { readGcodeMetadata } from "./lib/gcode-metadata";
 import {
   assemblyParts,
   duplicateAssembly,
@@ -119,7 +120,7 @@ import { Viewport } from "./components/Viewport";
 import type { ViewTool } from "./components/Viewport";
 import {
   createPrintPackage,
-  printThumbnail,
+  printThumbnails,
   readPrintPackage,
 } from "./lib/print-package";
 import { loadVendorPrinter } from "./lib/vendor-printers";
@@ -495,26 +496,26 @@ function App() {
         if (printPackage || /\.(gcode|gco|g)$/i.test(file.name)) {
           if (file.size > 100 * 1024 * 1024)
             throw new Error("G-code exceeds 100 MB.");
-          const parsed = parseGcode(
-            printPackage?.gcode ?? (await file.text()),
-            {
-              filaments: printPackage?.filaments,
-              diameter:
-                printPackage?.filamentDiameter ??
-                printPackage?.printer?.filament ??
-                project.printer.filament,
-              density: project.settings.density,
-              cost: project.settings.cost,
-            },
-          );
+          const text = printPackage?.gcode ?? (await file.text());
+          const metadata = printPackage ?? readGcodeMetadata(text);
+          const parsed = parseGcode(text, {
+            filaments: metadata.filaments,
+            diameter:
+              metadata.filamentDiameter ??
+              metadata.printer?.filament ??
+              project.printer.filament,
+            density: project.settings.density,
+            cost: project.settings.cost,
+          });
           if (!parsed.layers.length)
             throw new Error("No extrusion paths found in this G-code.");
           setResult({
             ...parsed,
-            warnings: [...parsed.warnings, ...(printPackage?.warnings ?? [])],
+            warnings: [...parsed.warnings, ...metadata.warnings],
             source: {
               file,
-              printer: printPackage?.printer,
+              printer: metadata.printer,
+              estimates: metadata.estimates,
               plates: printPackage?.plates,
               platePath: printPackage?.path,
             },
@@ -593,6 +594,7 @@ function App() {
         source: {
           file,
           printer: job.printer,
+          estimates: job.estimates,
           plates: job.plates,
           platePath: job.path,
         },
@@ -687,10 +689,7 @@ function App() {
     }
     const name = `${project.name.replace(/[^a-z0-9-_ ]/gi, "")}_plate-${project.activePlate}`;
     if (project.printer.firmware === "bambu") {
-      const images = {
-        large: printThumbnail(result, project.printer),
-        small: printThumbnail(result, project.printer, 128),
-      };
+      const images = printThumbnails(result, project.printer);
       download(
         createPrintPackage(project, result, images) as Uint8Array<ArrayBuffer>,
         `${name}.gcode.3mf`,
@@ -1895,6 +1894,47 @@ function App() {
                 <small className="estimate-note">
                   *Excludes heating and acceleration.
                 </small>
+                {result.source?.estimates && (
+                  <Stack gap={2} mt="xs" className="file-estimates">
+                    <Text size="xs" fw={600}>
+                      {result.source.estimates.basis}
+                    </Text>
+                    <Text size="xs">
+                      {[
+                        result.source.estimates.seconds !== undefined
+                          ? formatDuration(result.source.estimates.seconds)
+                          : undefined,
+                        result.source.estimates.weight !== undefined
+                          ? `${result.source.estimates.weight.toFixed(2)} g`
+                          : undefined,
+                        result.source.estimates.filament !== undefined
+                          ? `${(result.source.estimates.filament / 1000).toFixed(2)} m`
+                          : undefined,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                    {result.source.estimates.tools
+                      .filter(
+                        (t) => (t.weight ?? 0) > 0 || (t.filament ?? 0) > 0,
+                      )
+                      .map((t) => (
+                        <Text size="xs" c="dimmed" key={t.tool}>
+                          Filament {t.tool + 1}:{" "}
+                          {[
+                            t.weight !== undefined
+                              ? `${t.weight.toFixed(2)} g`
+                              : undefined,
+                            t.filament !== undefined
+                              ? `${(t.filament / 1000).toFixed(2)} m`
+                              : undefined,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                      ))}
+                  </Stack>
+                )}
                 <Divider my="sm" />
                 <Select
                   aria-label="Preview color scheme"
@@ -2938,7 +2978,8 @@ function App() {
               <Text size="sm" mt="md">
                 Assign filament to each part, paint surfaces, or use Color by
                 height to create linked bands. Bambu AMS and Snapmaker U1
-                profiles are available. Manage filaments sets cooling, fan start
+                profiles are available. U1 exports include printer thumbnails
+                and filament details. Manage filaments sets cooling, fan start
                 layer, temperature and flow for each spool; bed temperature is
                 shared. Cuts, splits, and height colors preserve painted
                 materials as linked solid parts. Support painting, STEP, resin

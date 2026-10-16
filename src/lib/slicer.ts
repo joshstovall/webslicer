@@ -1,3 +1,5 @@
+import { createU1Job } from "./u1-job";
+import { printThumbnails } from "./print-package";
 import type {
   Model,
   Printer,
@@ -127,6 +129,15 @@ export async function slicePlate(
                 }
               }
             }
+          }
+          if (printer.firmware === "snapmaker-u1") {
+            result.gcode = createU1Job(
+              result,
+              printer,
+              settings,
+              filaments,
+              printThumbnails(result, printer, 300, 48),
+            );
           }
           resolve(result);
         } catch (e) {

@@ -11,6 +11,15 @@ for (const width of [1440, 390])
     await page.goto("./");
     await expect(page.locator(".saved-indicator")).toContainText("Saved");
     const files: Record<string, Uint8Array> = multiPlateFiles();
+    const config = new TextDecoder().decode(
+      files["Metadata/slice_info.config"],
+    );
+    files["Metadata/slice_info.config"] = strToU8(
+      config.replace(
+        '<metadata key="index" value="10"/>',
+        '<metadata key="index" value="10"/><metadata key="prediction" value="7200"/><metadata key="weight" value="42"/>',
+      ),
+    );
     files["Metadata/plate_4.gcode"] = strToU8("G90\nM83\n");
     const bytes = Buffer.from(zipSync(files));
     await page.locator('input[type="file"]').first().setInputFiles({
@@ -23,6 +32,7 @@ for (const width of [1440, 390])
       exact: true,
     });
     await expect(plate).toHaveValue("2. Base");
+    await expect(page.locator(".file-estimates")).toHaveCount(0);
     await expect(page.locator(".preview-card-heading")).toContainText(
       "Bambu Lab P1S",
     );
@@ -51,6 +61,11 @@ for (const width of [1440, 390])
       .getByRole("option", { name: "10. Cap & clip", exact: true })
       .click();
     await expect(plate).toHaveValue("10. Cap & clip");
+    await expect(page.locator(".file-estimates")).toContainText(
+      "Archive plate metadata",
+    );
+    await expect(page.locator(".file-estimates")).toContainText("42.00 g");
+    await expect(page.locator(".file-estimates")).toContainText("2h 0m");
     await expect(page.locator(".plate-label strong")).toHaveText("Cap & clip");
     await expect(page.locator(".plate-number")).toHaveText("10");
     await expect(page.locator(".preview-card-heading")).toContainText(
@@ -79,6 +94,11 @@ for (const width of [1440, 390])
       }),
     ).toBeVisible();
     await expect(plate).toHaveValue("10. Cap & clip");
+    await expect(page.locator(".file-estimates")).toContainText(
+      "Archive plate metadata",
+    );
+    await expect(page.locator(".file-estimates")).toContainText("42.00 g");
+    await expect(page.locator(".file-estimates")).toContainText("2h 0m");
     await expect(page.locator(".plate-label strong")).toHaveText("Cap & clip");
     await expect(page.locator(".plate-number")).toHaveText("10");
     const pending = page.waitForEvent("download");
