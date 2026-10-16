@@ -83,6 +83,8 @@ export async function slicePlate(
           );
           auditThermalCommands(compiled, printer);
           const result = parseGcode(compiled, {
+            arcConvention:
+              printer.firmware === "snapmaker-u1" ? "klipper" : "marlin",
             diameter: printer.filament,
             density: settings.density,
             cost: settings.cost,

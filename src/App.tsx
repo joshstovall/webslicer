@@ -499,6 +499,11 @@ function App() {
           const text = printPackage?.gcode ?? (await file.text());
           const metadata = printPackage ?? readGcodeMetadata(text);
           const parsed = parseGcode(text, {
+            previewSegmentLimit: 1_000_000,
+            arcConvention:
+              metadata.printer?.firmware === "snapmaker-u1"
+                ? "klipper"
+                : "marlin",
             filaments: metadata.filaments,
             diameter:
               metadata.filamentDiameter ??
@@ -577,6 +582,9 @@ function App() {
       const job = readPrintPackage(bytes, path);
       if (!job) throw new Error("This file contains no print plates.");
       const parsed = parseGcode(job.gcode, {
+        previewSegmentLimit: 1_000_000,
+        arcConvention:
+          job.printer?.firmware === "snapmaker-u1" ? "klipper" : "marlin",
         filaments: job.filaments,
         diameter:
           job.filamentDiameter ??
@@ -2973,7 +2981,8 @@ function App() {
                 Multi-tool FDM slicing with automatic normal/tree supports,
                 adaptive layers, spiral vase, multiple infill patterns, and
                 skirt/brim/raft. Multiple objects and plates, G-code inspection,
-                and reusable print presets are supported.
+                and reusable print presets are supported. Imported G-code
+                previews include tool-colored arcs, circles and helices.
               </Text>
               <Text size="sm" mt="md">
                 Assign filament to each part, paint surfaces, or use Color by
