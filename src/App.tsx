@@ -1,3 +1,7 @@
+import {
+  loadArrangePreferences,
+  saveArrangePreferences,
+} from "./lib/arrange-preferences";
 import { ArrangeDialog } from "./components/ArrangeDialog";
 import { arrangePlate, type ArrangeOptions } from "./lib/placement";
 import { StepImportDialog } from "./components/StepImportDialog";
@@ -112,7 +116,6 @@ import type {
 import { FEATURE_COLORS, FEATURE_NAMES } from "./types";
 import { DEFAULT_SETTINGS, PRINTERS } from "./lib/profiles";
 import {
-  arrangeModels,
   boundsOf,
   COLORS,
   dimensions,
@@ -232,11 +235,18 @@ function App() {
     [importing, setImporting] = useState(false),
     [loadingPrinter, setLoadingPrinter] = useState(false);
   const [arranging, setArranging] = useState(false);
-  const [arrangeOptions, setArrangeOptions] = useState<ArrangeOptions>({
-    gap: 8,
-    edge: 8,
-    rotate: true,
-  });
+  const [arrangeOptions, setArrangeOptions] = useState<ArrangeOptions>(
+    loadArrangePreferences,
+  );
+  const arrangeOptionsRef = useRef(arrangeOptions);
+  arrangeOptionsRef.current = arrangeOptions;
+  useEffect(() => saveArrangePreferences(arrangeOptions), [arrangeOptions]);
+  const [autoPlacement, setAutoPlacement] = useState<{
+    title: string;
+    working: boolean;
+    error?: string;
+    decide?: (decision: "retry" | "keep") => void;
+  } | null>(null);
   const importActive = useRef(false);
   const cadAbort = useRef<AbortController | null>(null);
   const [stepImport, setStepImport] = useState<{
@@ -597,25 +607,120 @@ function App() {
       setArranging(false);
     }
   }
-  function addPrimitive(kind: string) {
-    const m = primitive(kind, project.activePlate);
-    m.color = COLORS[project.models.length % COLORS.length];
-    let models = [...activeModels, m];
+  async function placeAutomatically(
+    models: Model[],
+    p: Project,
+    controller: AbortController,
+    title: string,
+  ): Promise<Model[]> {
+    const signal = controller.signal;
+    const cancelled = () =>
+      new DOMException("Placement cancelled.", "AbortError");
+    notifications.clean();
     try {
-      models = arrangeModels(models, project.printer);
-    } catch {
-      m.position = [0, 0, 0];
+      for (;;) {
+        if (signal.aborted) throw cancelled();
+        setProgress(0);
+        setStage("Loading outline arranger");
+        setAutoPlacement({ title, working: true });
+        try {
+          const settings = p.settings;
+          const adhesion =
+            settings.adhesion === "brim"
+              ? settings.brimWidth
+              : settings.adhesion === "skirt"
+                ? settings.skirtDistance +
+                  settings.skirtLoops * settings.lineWidth
+                : 0;
+          const preferences = arrangeOptionsRef.current;
+          return await arrangePlate(
+            models,
+            p.printer,
+            { ...preferences, edge: Math.max(preferences.edge, adhesion) },
+            signal,
+            (value, label) => {
+              setProgress(value * 100);
+              setStage(label);
+            },
+          );
+        } catch (error) {
+          if (signal.aborted || (error as Error).name === "AbortError")
+            throw cancelled();
+          const decision = await new Promise<"retry" | "keep">(
+            (resolve, reject) => {
+              const abort = () => {
+                signal.removeEventListener("abort", abort);
+                reject(cancelled());
+              };
+              signal.addEventListener("abort", abort, { once: true });
+              setAutoPlacement({
+                title,
+                working: false,
+                error: (error as Error).message,
+                decide: (choice) => {
+                  signal.removeEventListener("abort", abort);
+                  resolve(choice);
+                },
+              });
+              if (signal.aborted) abort();
+            },
+          );
+          if (signal.aborted) throw cancelled();
+          if (decision === "keep") {
+            notify(
+              "Geometry kept without arranging. Check its size and position before slicing.",
+              "orange",
+            );
+            return models;
+          }
+        }
+      }
+    } finally {
+      setAutoPlacement(null);
     }
-    commit((p) => ({
-      ...p,
-      models: [...p.models.filter((n) => n.plate !== p.activePlate), ...models],
-    }));
-    setSelected(m.id);
+  }
+  async function addPrimitive(kind: string) {
+    if (abortRef.current || importing) return;
+    const snapshot = projectRef.current;
+    const m = primitive(kind, snapshot.activePlate);
+    m.color = COLORS[snapshot.models.length % COLORS.length];
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setBusy(true);
     setModal(null);
+    try {
+      const models = await placeAutomatically(
+        [...snapshot.models.filter((n) => n.plate === snapshot.activePlate), m],
+        snapshot,
+        controller,
+        "Place starter shape",
+      );
+      if (controller.signal.aborted) return;
+      if (projectRef.current !== snapshot)
+        throw new Error(
+          "The project changed while placing the shape. Retry with the current plate.",
+        );
+      abortRef.current = null;
+      commit({
+        ...snapshot,
+        models: [
+          ...snapshot.models.filter((n) => n.plate !== snapshot.activePlate),
+          ...models,
+        ],
+      });
+      setSelected(m.id);
+    } catch (error) {
+      if ((error as Error).name !== "AbortError")
+        notify((error as Error).message, "red");
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setBusy(false);
+    }
   }
   async function importFiles(files: FileList | File[]) {
-    if (importActive.current) return;
+    if (importActive.current || abortRef.current) return;
     importActive.current = true;
+    let placementController: AbortController | null = null;
     previewRequest.current++;
     setLoadingPackage(false);
     setImporting(true);
@@ -740,7 +845,8 @@ function App() {
             processPatch = choice;
           }
         }
-        const p = applySettingsPatch(projectRef.current, processPatch);
+        const snapshot = projectRef.current;
+        const p = applySettingsPatch(snapshot, processPatch);
         const { models: added, filaments: importedFilaments } =
           bindImportedMaterials(p, imported);
         if (!p.plates.includes(targetPlate)) {
@@ -748,20 +854,32 @@ function App() {
             "The destination plate was removed while the model was loading.",
           );
         }
-        for (const warning of imported.warnings) notify(warning, "orange");
         const all = [
           ...p.models.filter((m) => m.plate === targetPlate),
           ...added,
         ];
-        let arranged = all;
-        try {
-          arranged = arrangeModels(all, p.printer);
-        } catch {
-          notify(
-            "Model imported. Check its size and position before slicing.",
-            "orange",
+        if (abortRef.current)
+          throw new Error(
+            "Another operation started while the file was loading. Retry the import when it finishes.",
           );
-        }
+        placementController = new AbortController();
+        abortRef.current = placementController;
+        setBusy(true);
+        const arranged = await placeAutomatically(
+          all,
+          p,
+          placementController,
+          "Place imported models",
+        );
+        if (placementController.signal.aborted)
+          throw new DOMException("Import cancelled.", "AbortError");
+        if (projectRef.current !== snapshot)
+          throw new Error(
+            "The project changed during import. Retry with the current plate.",
+          );
+        abortRef.current = null;
+        placementController = null;
+        setBusy(false);
         commit({
           ...p,
           filaments: importedFilaments,
@@ -771,12 +889,17 @@ function App() {
           ],
         });
         setSelected(added[0]?.id || null);
+        for (const warning of imported.warnings) notify(warning, "orange");
         notify(`Imported ${file.name}`);
       }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError"))
         notify((e as Error).message, "red");
     } finally {
+      if (placementController && abortRef.current === placementController) {
+        abortRef.current = null;
+        setBusy(false);
+      }
       cadAbort.current = null;
       setStepImport(null);
       importActive.current = false;
@@ -1026,22 +1149,19 @@ function App() {
         throw new DOMException("Editing cancelled.", "AbortError");
       let models = result.models;
       if (operation.kind === "cut") {
-        try {
-          const arranged = arrangeModels(
-            models.filter((m) => m.plate === project.activePlate),
-            project.printer,
-          );
-          models = [
-            ...models.filter((m) => m.plate !== project.activePlate),
-            ...arranged,
-          ];
-        } catch {
-          notify(
-            "The cut succeeded, but the pieces need manual arrangement.",
-            "orange",
-          );
-        }
+        const arranged = await placeAutomatically(
+          models.filter((m) => m.plate === project.activePlate),
+          project,
+          controller,
+          "Place cut pieces",
+        );
+        models = [
+          ...models.filter((m) => m.plate !== project.activePlate),
+          ...arranged,
+        ];
       }
+      if (controller.signal.aborted)
+        throw new DOMException("Editing cancelled.", "AbortError");
       abortRef.current = null;
       if (
         !models.every((m, i) => m === project.models[i]) ||
@@ -2568,6 +2688,20 @@ function App() {
           }}
         />
       )}
+      {autoPlacement && (
+        <ArrangeDialog
+          title={autoPlacement.title}
+          working={autoPlacement.working}
+          error={autoPlacement.error}
+          options={arrangeOptions}
+          progress={progress}
+          stage={stage}
+          onChange={setArrangeOptions}
+          onStart={() => autoPlacement.decide?.("retry")}
+          onKeep={() => autoPlacement.decide?.("keep")}
+          onClose={() => abortRef.current?.abort()}
+        />
+      )}
       {stepImport && (
         <StepImportDialog
           name={stepImport.name}
@@ -2636,7 +2770,7 @@ function App() {
               icon: Layers3,
             },
           ].map((p) => (
-            <button key={p.id} onClick={() => addPrimitive(p.id)}>
+            <button key={p.id} onClick={() => void addPrimitive(p.id)}>
               <p.icon size={36} strokeWidth={1} />
               <strong>{p.name}</strong>
               <span>{p.desc}</span>
@@ -3010,7 +3144,7 @@ function App() {
         </Stack>
       </Modal>
       <Modal
-        opened={editing}
+        opened={editing && !autoPlacement}
         onClose={() => abortRef.current?.abort()}
         title="Editing materials"
         closeOnClickOutside={false}

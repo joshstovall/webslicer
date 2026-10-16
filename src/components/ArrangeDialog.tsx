@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Group,
   Modal,
@@ -17,6 +18,9 @@ export function ArrangeDialog({
   onChange,
   onStart,
   onClose,
+  title = "Arrange plate",
+  error,
+  onKeep,
 }: {
   options: ArrangeOptions;
   working: boolean;
@@ -25,12 +29,15 @@ export function ArrangeDialog({
   onChange: (options: ArrangeOptions) => void;
   onStart: () => void;
   onClose: () => void;
+  title?: string;
+  error?: string;
+  onKeep?: () => void;
 }) {
   return (
     <Modal
       opened
       onClose={onClose}
-      title="Arrange plate"
+      title={title}
       closeOnClickOutside={false}
       size="sm"
     >
@@ -42,14 +49,25 @@ export function ArrangeDialog({
             </Text>
             <Progress value={progress} animated />
             <Text size="xs" c="dimmed">
-              The plate changes only when arrangement finishes.
+              The existing project is kept until this operation finishes.
             </Text>
           </>
         ) : (
           <>
-            <Text size="sm">
-              Fit projected outlines around other parts and reserved areas.
-              Linked parts move together. Openings can hold smaller objects.
+            {error && (
+              <Alert color="orange" title="Placement needs attention">
+                {error}
+              </Alert>
+            )}
+            {!error && (
+              <Text size="sm">
+                Fit projected outlines around other parts and reserved areas.
+                Linked parts move together. Openings can hold smaller objects.
+              </Text>
+            )}
+            <Text size="xs" c="dimmed">
+              Preferences are saved on this device for imports, starter shapes,
+              cuts and manual arrangement.
             </Text>
             <NumberInput
               label="Part spacing"
@@ -85,9 +103,22 @@ export function ArrangeDialog({
         )}
         <Group justify="end">
           <Button variant="default" onClick={onClose}>
-            {working ? "Cancel arrangement" : "Cancel"}
+            {onKeep
+              ? "Cancel operation"
+              : working
+                ? "Cancel arrangement"
+                : "Cancel"}
           </Button>
-          {!working && <Button onClick={onStart}>Arrange objects</Button>}
+          {!working && error && onKeep && (
+            <Button variant="default" onClick={onKeep}>
+              Keep without arranging
+            </Button>
+          )}
+          {!working && (
+            <Button onClick={onStart}>
+              {error ? "Retry placement" : "Arrange objects"}
+            </Button>
+          )}
         </Group>
       </Stack>
     </Modal>
