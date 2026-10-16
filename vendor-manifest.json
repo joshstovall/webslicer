@@ -1,0 +1,38 @@
+{
+  "engine": "Kiri:Moto",
+  "version": "4.7.3",
+  "retrieved": "2026-10-15",
+  "source": "https://github.com/GridSpace/grid-apps",
+  "files": [
+    {
+      "path": "public/engine/kiri-eng.js",
+      "url": "https://grid.space/lib/pack/kiri-eng.js",
+      "sha256": "9f7bbfd2ecada83f8394e87efc5027e3f470f8bbe804bba6a52f7c7270fdf7b7",
+      "modified": false
+    },
+    {
+      "path": "public/engine/kiri-work.js",
+      "url": "https://grid.space/lib/pack/kiri-work.js",
+      "sha256": "820fdd09f784917cfda0fb5fc426768030d5c4b2fb7e46c0baa53f5a44e087af",
+      "modified": true
+    },
+    {
+      "path": "public/engine/kiri-pool.js",
+      "url": "https://grid.space/lib/pack/kiri-pool.js",
+      "sha256": "bc04824356e9d6d44e0af76c059e6d692db2faef69e46a1435c891dc20b6ffe3",
+      "modified": true
+    },
+    {
+      "path": "public/wasm/kiri-geo.wasm",
+      "url": "https://grid.space/wasm/kiri-geo.wasm",
+      "sha256": "63c092e18e7e1b98a2fef7e81a1f098994711b7826df160c1046926bcdd39f2a",
+      "modified": false
+    },
+    {
+      "path": "public/wasm/manifold.wasm",
+      "url": "https://grid.space/wasm/manifold.wasm",
+      "sha256": "8f8cb69137af5dd87950b60aa88d7613cde48e4af45b43b8464473191cc9dbe6",
+      "modified": false
+    }
+  ]
+}

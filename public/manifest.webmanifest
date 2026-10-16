@@ -1,0 +1,17 @@
+{
+  "name": "Stratum Web Slicer",
+  "short_name": "Stratum",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5f5f0",
+  "theme_color": "#254d40",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "scope": "./"
+}
