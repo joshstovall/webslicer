@@ -14,7 +14,10 @@ export interface ModifierMesh {
   scale: Vec3;
   enabled: boolean;
   /** Missing on older projects means infill. Support volumes select overhang contacts. */
-  kind?: "infill" | "support-enforcer" | "support-blocker";
+  kind?: "infill" | "support-enforcer" | "support-blocker" | "process";
+  /** Independent overrides; undefined inherits the preceding volume or base process. */
+  speedPercent?: number;
+  flowPercent?: number;
   infill: number;
   infillPattern: string;
 }

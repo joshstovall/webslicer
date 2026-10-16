@@ -109,6 +109,9 @@ window.addEventListener("message", async (e) => {
       widget.meta.file = part.name;
       widget.anno.extruder = part.tool;
       widget.anno.stratumSupportPaint = part.supportPaintTriangles;
+      widget.anno.stratumProcessModifiers = part.modifiers
+        ?.filter((m) => m.kind === "process")
+        .map((m) => ({ ...m, vertices: Array.from(m.vertices) }));
       const own = supportGeometry[index];
       const clearance =
         (process.sliceSupportExtra || 0) +

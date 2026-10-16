@@ -87,7 +87,8 @@ export function ModifierPanel({
     >
       <Stack gap="sm">
         <Text size="sm">
-          Change infill or support contacts inside a volume on {model.name}
+          Change infill, speed, flow or support contacts inside a volume on{" "}
+          {model.name}
           {model.assemblyId ? " and its linked parts" : ""}. Later volumes take
           priority within each setting. Walls and top/bottom surfaces stay
           intact.
@@ -205,9 +206,20 @@ export function ModifierPanel({
                   label: "Enforce support contacts",
                 },
                 { value: "support-blocker", label: "Block support contacts" },
+                { value: "process", label: "Print speed and flow" },
               ]}
               allowDeselect={false}
-              onChange={(v) => v && update({ kind: v as ModifierMesh["kind"] })}
+              onChange={(v) =>
+                v &&
+                update({
+                  kind: v as ModifierMesh["kind"],
+                  ...(v === "process" &&
+                  item.speedPercent === undefined &&
+                  item.flowPercent === undefined
+                    ? { speedPercent: 50 }
+                    : {}),
+                })
+              }
             />
             {item.kind?.startsWith("support-") ? (
               <Text size="sm">
@@ -217,6 +229,49 @@ export function ModifierPanel({
                 Enable Automatic or Enforced only supports in print settings.
                 Green volumes enforce; red volumes block.
               </Text>
+            ) : item.kind === "process" ? (
+              <>
+                <Text size="sm">
+                  Purple volumes change model walls, skins and infill. Filament
+                  flow limits and cooling still apply. Travel, supports and
+                  purge paths keep their own settings.
+                </Text>
+                {(["speedPercent", "flowPercent"] as const).map((key) => {
+                  const label =
+                    key === "speedPercent" ? "Print speed" : "Extrusion flow";
+                  return (
+                    <Stack gap="xs" key={key}>
+                      <Switch
+                        label={`Override ${label.toLowerCase()}`}
+                        checked={item[key] !== undefined}
+                        onChange={(e) =>
+                          update({
+                            [key]: e.currentTarget.checked ? 100 : undefined,
+                          })
+                        }
+                      />
+                      <NumberInput
+                        label={`${label} multiplier`}
+                        suffix=" %"
+                        min={10}
+                        max={300}
+                        disabled={item[key] === undefined}
+                        value={item[key] ?? 100}
+                        onChange={(v) =>
+                          typeof v === "number" &&
+                          v >= 10 &&
+                          v <= 300 &&
+                          update({ [key]: v })
+                        }
+                      />
+                    </Stack>
+                  );
+                })}
+                <Text size="xs" c="dimmed">
+                  100% keeps the base value. Later enabled overrides win
+                  independently for speed and flow.
+                </Text>
+              </>
             ) : (
               <>
                 <NumberInput

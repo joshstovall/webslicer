@@ -14,6 +14,8 @@ export const MODIFIER_PATTERNS = [
 export interface WorldModifier {
   name: string;
   kind?: ModifierMesh["kind"];
+  speedPercent?: number;
+  flowPercent?: number;
   vertices: Float32Array;
   infill: number;
   infillPattern: string;
@@ -36,7 +38,14 @@ export function validateModifiers(value: unknown): ModifierMesh[] | undefined {
       typeof m.name !== "string" ||
       typeof m.enabled !== "boolean" ||
       (m.kind !== undefined &&
-        !["infill", "support-enforcer", "support-blocker"].includes(m.kind)) ||
+        !["infill", "support-enforcer", "support-blocker", "process"].includes(
+          m.kind,
+        )) ||
+      [m.speedPercent, m.flowPercent].some(
+        (v) =>
+          v !== undefined &&
+          (typeof v !== "number" || !Number.isFinite(v) || v < 10 || v > 300),
+      ) ||
       !vector(m.position) ||
       !vector(m.rotation) ||
       !vector(m.scale) ||
@@ -53,7 +62,7 @@ export function validateModifiers(value: unknown): ModifierMesh[] | undefined {
       m.infill > 100 ||
       !MODIFIER_PATTERNS.includes(m.infillPattern)
     )
-      throw new Error("Invalid modifier mesh, transform or infill settings.");
+      throw new Error("Invalid modifier mesh, transform or process settings.");
     ids.add(m.id);
     const positions =
       m.positions instanceof Float32Array
@@ -105,6 +114,8 @@ export function worldModifiers(model: Model): WorldModifier[] {
       return {
         name: m.name,
         kind: m.kind,
+        speedPercent: m.speedPercent,
+        flowPercent: m.flowPercent,
         vertices,
         infill: m.infill,
         infillPattern: m.infillPattern,
