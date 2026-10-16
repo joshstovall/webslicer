@@ -1,3 +1,5 @@
+import { StepImportDialog } from "./components/StepImportDialog";
+import type { StepOptions } from "./lib/step-mesh";
 import { ProcessImportDialog } from "./components/ProcessImportDialog";
 import {
   readProcessSettings,
@@ -228,6 +230,13 @@ function App() {
     [importing, setImporting] = useState(false),
     [loadingPrinter, setLoadingPrinter] = useState(false);
   const importActive = useRef(false);
+  const cadAbort = useRef<AbortController | null>(null);
+  const [stepImport, setStepImport] = useState<{
+    name: string;
+    stage?: string;
+    resolve: (options: StepOptions | null) => void;
+  } | null>(null);
+  useEffect(() => () => cadAbort.current?.abort(), []);
   const [processImport, setProcessImport] = useState<{
     id: string;
     name: string;
@@ -633,7 +642,32 @@ function App() {
           continue;
         }
         const targetPlate = projectRef.current.activePlate;
-        const imported = await importModelFile(file, targetPlate, materials);
+        let stepOptions: StepOptions | undefined;
+        let cadController: AbortController | undefined;
+        if (/\.(step|stp)$/i.test(file.name)) {
+          notifications.clean();
+          const choice = await new Promise<StepOptions | null>((resolve) =>
+            setStepImport({ name: file.name, resolve }),
+          );
+          if (!choice) break;
+          stepOptions = choice;
+          cadController = new AbortController();
+          cadAbort.current = cadController;
+        }
+        const imported = await importModelFile(
+          file,
+          targetPlate,
+          materials,
+          stepOptions && {
+            ...stepOptions,
+            signal: cadController!.signal,
+            onStage: (stage) =>
+              setStepImport((current) => current && { ...current, stage }),
+          },
+        );
+        if (cadController?.signal.aborted) break;
+        cadAbort.current = null;
+        setStepImport(null);
         let processPatch: Partial<Settings> = {};
         if (imported.processSettings || imported.processWarnings?.length) {
           const current = projectRef.current;
@@ -699,8 +733,11 @@ function App() {
         notify(`Imported ${file.name}`);
       }
     } catch (e) {
-      notify((e as Error).message, "red");
+      if (!(e instanceof DOMException && e.name === "AbortError"))
+        notify((e as Error).message, "red");
     } finally {
+      cadAbort.current = null;
+      setStepImport(null);
       importActive.current = false;
       setImporting(false);
       if (fileInput.current) fileInput.current.value = "";
@@ -1253,7 +1290,7 @@ function App() {
         onClick={() => fileInput.current?.click()}
         disabled={busy || importing}
       >
-        <Plus size={14} /> Add model <span>STL · OBJ + MTL · 3MF</span>
+        <Plus size={14} /> Add model <span>STL · OBJ + MTL · 3MF · STEP</span>
       </button>
       {model && (
         <div className="object-inspector">
@@ -1613,7 +1650,7 @@ function App() {
         type="file"
         multiple
         hidden
-        accept=".stl,.obj,.mtl,.3mf,.webslicer,.gcode,.gco,.g"
+        accept=".stl,.obj,.mtl,.3mf,.step,.stp,.webslicer,.gcode,.gco,.g"
         onChange={(e) => e.target.files && void importFiles(e.target.files)}
       />
       <header className="app-header" inert={modal === "modifiers"}>
@@ -2038,7 +2075,7 @@ function App() {
               >
                 Explore starter shapes <ArrowUpRight size={14} />
               </button>
-              <small>STL, OBJ, 3MF · Millimeters</small>
+              <small>STL, OBJ, 3MF, STEP · Millimeters</small>
             </div>
           )}
           {errors.length > 0 && (
@@ -2469,6 +2506,24 @@ function App() {
       >
         {mobilePanel === "settings" ? settingsPanel : objectPanel}
       </Drawer>
+      {stepImport && (
+        <StepImportDialog
+          name={stepImport.name}
+          stage={stepImport.stage}
+          onStart={(options) => {
+            setStepImport(
+              (current) =>
+                current && { ...current, stage: "Reading STEP file" },
+            );
+            stepImport.resolve(options);
+          }}
+          onCancel={() => {
+            cadAbort.current?.abort();
+            stepImport.resolve(null);
+            setStepImport(null);
+          }}
+        />
+      )}
       {processImport && (
         <ProcessImportDialog
           key={processImport.id}
@@ -3247,7 +3302,8 @@ function App() {
             <Tabs.Panel value="guide" pt="md">
               <ol className="help-list">
                 <li>
-                  Import an STL, OBJ, or 3MF mesh, or add a starter shape.
+                  Import an STL, OBJ, 3MF, or STEP model, or add a starter
+                  shape.
                 </li>
                 <li>
                   Choose a printer and material. Review your machine’s start/end
@@ -3314,10 +3370,11 @@ function App() {
                 materials as linked solid parts. Paint supports independently
                 with enforce, block and restore tools. Object modifiers change
                 regional wall/skin counts, infill, print speed, extrusion flow
-                and support contacts. STEP, resin slicing, and full Orca project
-                settings are not supported. 3MF imports component geometry,
-                material assignments, and painted facets. Generated paths still
-                need printer-specific validation.
+                and support contacts. STEP imports CAD parts and face colors
+                with selectable surface quality. Resin slicing and full Orca
+                project settings are not supported. 3MF imports component
+                geometry, material assignments, and painted facets. Generated
+                paths still need printer-specific validation.
               </Text>
               <Text size="sm" mt="md">
                 <a
@@ -3335,6 +3392,14 @@ function App() {
                 >
                   Engine license
                 </a>
+                {" · "}
+                <a
+                  href={`${import.meta.env.BASE_URL}cad/NOTICE.html`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  CAD converter licenses and source
+                </a>
               </Text>
             </Tabs.Panel>
           </Tabs>
@@ -3344,7 +3409,7 @@ function App() {
         <div className="drop-overlay">
           <Upload size={42} />
           <strong>Drop it on the plate.</strong>
-          <span>STL, OBJ, 3MF, G-code, or a Stratum project</span>
+          <span>STL, OBJ, 3MF, STEP, G-code, or a Stratum project</span>
         </div>
       )}
     </div>

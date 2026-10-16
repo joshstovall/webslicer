@@ -1,3 +1,4 @@
+import { importStep, type StepImportOptions } from "./import-step";
 import { newId } from "./id";
 import * as THREE from "three";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
@@ -254,11 +255,14 @@ export async function importModelFile(
   file: File,
   plate: number,
   companions: File[] = [],
+  stepOptions?: StepImportOptions,
 ): Promise<ModelImport> {
   if (file.size > 100 * 1024 * 1024)
     throw new Error("Please use a model smaller than 100 MB.");
   const ext = file.name.split(".").pop()?.toLowerCase(),
     stem = file.name.replace(/\.[^.]+$/, "");
+  if (ext === "step" || ext === "stp")
+    return importStep(file, plate, stepOptions);
   if (ext === "3mf")
     return import3mf(new Uint8Array(await file.arrayBuffer()), stem, plate);
   if (ext === "stl") {
@@ -267,7 +271,8 @@ export async function importModelFile(
       throw new Error("This STL has no triangles.");
     return { models: [createModel(stem, g, plate)], palette: [], warnings: [] };
   }
-  if (ext !== "obj") throw new Error("Supported models are STL, OBJ, and 3MF.");
+  if (ext !== "obj")
+    throw new Error("Supported models are STL, OBJ, 3MF, and STEP.");
   return importObj(file, plate, companions);
 }
 

@@ -18,7 +18,7 @@ export default defineConfig(({ command }) => {
     },
     base: process.env.VITE_BASE_PATH || "/",
     plugins: [react(), ...(runtime ? [runtimeBundlePlugin(runtime)] : [])],
-    optimizeDeps: { include: ["manifold-3d"] },
+    optimizeDeps: { include: ["manifold-3d", "occt-import-js"] },
     server: {
       host: "0.0.0.0",
       watch: {
