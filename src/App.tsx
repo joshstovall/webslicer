@@ -1,3 +1,4 @@
+import { validManualLayerSettings } from "./lib/layer-height";
 import { applyPrinter, VENDOR_NOZZLES } from "./lib/nozzle-profiles";
 import { PrinterHardware } from "./components/PrinterHardware";
 import { readGcodeMetadata } from "./lib/gcode-metadata";
@@ -220,7 +221,19 @@ function App() {
     [presets, setPresets] = useState<{ name: string; settings: Settings }[]>(
       () => {
         try {
-          return JSON.parse(localStorage.getItem("stratum-presets") || "[]");
+          const saved = JSON.parse(
+            localStorage.getItem("stratum-presets") || "[]",
+          );
+          return Array.isArray(saved)
+            ? saved.filter(
+                (p) =>
+                  p &&
+                  typeof p.name === "string" &&
+                  p.settings &&
+                  typeof p.settings === "object" &&
+                  validManualLayerSettings(p.settings),
+              )
+            : [];
         } catch {
           return [];
         }
@@ -1011,6 +1024,10 @@ function App() {
   const settingsPanel = (
     <SettingsPanel
       filamentCount={filaments.length}
+      modelHeight={Math.max(
+        0,
+        ...activeModels.filter((m) => m.visible).map((m) => boundsOf(m).max.z),
+      )}
       onFilaments={() => setModal("filaments")}
       settings={project.settings}
       printer={project.printer}
@@ -2498,7 +2515,7 @@ function App() {
                     ? VENDOR_NOZZLES.map(String)
                     : ["0.2", "0.25", "0.4", "0.6", "0.8", "1"]
                 }
-                description="Changing diameter resets layer heights, line width, support spacing and vendor retraction."
+                description="Changing diameter resets layer heights, line width, support spacing and vendor retraction, and disables the saved manual layer curve."
                 onChange={(v) =>
                   v && setPrinterDraft((p) => ({ ...p, nozzle: Number(v) }))
                 }
@@ -3075,10 +3092,11 @@ function App() {
             <Tabs.Panel value="about" pt="md">
               <Text size="sm">
                 Multi-tool FDM slicing with automatic normal/tree supports,
-                adaptive layers, spiral vase, multiple infill patterns, and
-                skirt/brim/raft. Multiple objects and plates, G-code inspection,
-                and reusable print presets are supported. Imported G-code
-                previews include tool-colored arcs, circles and helices.
+                adaptive and manual variable layers, spiral vase, multiple
+                infill patterns, and skirt/brim/raft. Multiple objects and
+                plates, G-code inspection, and reusable print presets are
+                supported. Imported G-code previews include tool-colored arcs,
+                circles and helices.
               </Text>
               <Text size="sm" mt="md">
                 Assign filament to each part, paint surfaces, or use Color by

@@ -103,6 +103,9 @@ export interface Settings {
   thinWalls: boolean;
   adaptive: boolean;
   minLayerHeight: number;
+  manualLayers?: boolean;
+  /** Model-space Z / target height points, shared across every material on a plate. */
+  layerHeightCurve?: { z: number; height: number }[];
   vase: boolean;
   supports: string;
   supportDensity: number;

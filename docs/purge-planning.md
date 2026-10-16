@@ -43,3 +43,11 @@ G-code labels priming as `purge tower` and the perimeter/foundation/sparse rows 
 Sources: the pinned MIT-licensed GridSpace [preparation implementation](https://github.com/GridSpace/grid-apps/blob/d138275bbe9d4e4030d8cb8b2dcf66607da9295a/src/kiri/mode/fdm/work/prepare.js) and [G-code exporter](https://github.com/GridSpace/grid-apps/blob/d138275bbe9d4e4030d8cb8b2dcf66607da9295a/src/kiri/mode/fdm/work/export.js), checked against the vendored runtime. These are software planning checks, not physical printer validation.
 
 Bambu station behavior is checked using the pinned [P1S change template](https://github.com/bambulab/BambuStudio/blob/79df7ae309be398ed30c9f397c13c9911c2edc57/resources/profiles/BBL/machine/Bambu%20Lab%20P1S%200.4%20nozzle%20template%20change_filament_gcode.json). Browser tests sum actual extrusion commands inside its `FLUSH_START`/`FLUSH_END` regions, verify its separate 2 mm spillage compensation, and independently audit the tower budget.
+
+## Raft tools and tower foundations
+
+Rafts use the configured support filament when supports are enabled; without supports they use the first model's filament. The engine now selects that tool at startup, emits all raft paths with it and carries the state into the first model/support transition. A raft tool participates in directional purge capacity even when the geometry needs no generated supports. This removes an unintended switch to slot 1 on sparse nonzero-slot jobs.
+
+For jobs requiring a tower, structural paths are added to each existing raft layer and to a tower-only layer spanning the raft-to-model separation gap. The model keeps that gap; the tower has a continuous base from the bed. Foundation paths use the raft tool, follow existing layer heights and reserve no transition priming volume. They participate in the usual flow limiting, bed checks and exact priming audit. Modal feature labels and end-of-layer retraction are preserved. The existing trimming pass removes all tower-only paths if no actual priming occurs later.
+
+`scripts/patch-raft-tools.py` reproduces the incremental worker change from `e885dfa`. Browser regressions check first-tool identity, absent unused slot 1, bed-to-model tower layers, nonzero dedicated support slots with and without actual supports, single-material rafts, and Bambu/U1 exports. Physical raft and tower performance remains unverified.

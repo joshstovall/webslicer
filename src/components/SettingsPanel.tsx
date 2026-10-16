@@ -1,3 +1,5 @@
+import { LayerHeightEditor } from "./LayerHeightEditor";
+import { flatLayerCurve, manualLayerErrors } from "../lib/layer-height";
 import { vendorNozzleLimits } from "../lib/nozzle-profiles";
 import {
   Accordion,
@@ -30,6 +32,7 @@ import { thermalLimits } from "../lib/thermal-limits";
 import { PRINTERS, MATERIALS, QUALITY } from "../lib/profiles";
 interface Props {
   filamentCount: number;
+  modelHeight: number;
   onFilaments: () => void;
   settings: Settings;
   printer: Printer;
@@ -41,6 +44,7 @@ interface Props {
 }
 export function SettingsPanel({
   filamentCount,
+  modelHeight,
   onFilaments,
   settings: s,
   printer,
@@ -50,6 +54,7 @@ export function SettingsPanel({
   onProfiles,
   disabled,
 }: Props) {
+  const [layerEditorOpen, setLayerEditorOpen] = useState(false);
   const limits = thermalLimits(printer);
   const layerLimits = vendorNozzleLimits(printer);
   const [advanced, setAdvanced] = useState(false),
@@ -124,7 +129,14 @@ export function SettingsPanel({
         label={label}
         description={description}
         checked={s[key] as boolean}
-        onChange={(e) => onChange({ [key]: e.currentTarget.checked })}
+        onChange={(e) =>
+          onChange({
+            [key]: e.currentTarget.checked,
+            ...(key === "adaptive" && e.currentTarget.checked
+              ? { manualLayers: false }
+              : {}),
+          })
+        }
         size="sm"
         disabled={disabled}
       />
@@ -136,7 +148,8 @@ export function SettingsPanel({
       title: "Quality",
       icon: Layers3,
       summary: `${s.layerHeight.toFixed(2)} mm`,
-      keywords: "layer line width adaptive thin walls vase",
+      keywords:
+        "layer line width adaptive manual variable curve thin walls vase",
       content: (
         <>
           <div className="field-pair">
@@ -172,7 +185,66 @@ export function SettingsPanel({
                 "Adaptive layer height",
                 "Vary layer heights together across all parts on the plate.",
               )}
-              {s.adaptive &&
+              <Switch
+                label="Manual layer heights"
+                description="Shape a shared height curve for all objects and colors."
+                checked={s.manualLayers ?? false}
+                disabled={disabled}
+                onChange={(e) =>
+                  onChange({
+                    manualLayers: e.currentTarget.checked,
+                    ...(e.currentTarget.checked
+                      ? {
+                          adaptive: false,
+                          layerHeightCurve:
+                            s.layerHeightCurve ??
+                            flatLayerCurve(s.layerHeight, modelHeight),
+                        }
+                      : {}),
+                  })
+                }
+              />
+              {s.manualLayers && (
+                <>
+                  <Button
+                    size="xs"
+                    variant="light"
+                    disabled={disabled}
+                    onClick={() => setLayerEditorOpen(true)}
+                  >
+                    Edit layer curve
+                  </Button>
+                  {manualLayerErrors(printer, s).map((error) => (
+                    <div
+                      role="alert"
+                      key={error}
+                      style={{
+                        color: "var(--mantine-color-red-7)",
+                        fontSize: 12,
+                      }}
+                    >
+                      {error}
+                    </div>
+                  ))}
+                </>
+              )}
+              {layerEditorOpen && (
+                <LayerHeightEditor
+                  settings={s}
+                  printer={printer}
+                  modelHeight={modelHeight}
+                  onClose={() => setLayerEditorOpen(false)}
+                  onSave={(points) => {
+                    onChange({
+                      layerHeightCurve: points,
+                      manualLayers: true,
+                      adaptive: false,
+                    });
+                    setLayerEditorOpen(false);
+                  }}
+                />
+              )}
+              {(s.adaptive || s.manualLayers) &&
                 number(
                   "minLayerHeight",
                   "Minimum layer height",

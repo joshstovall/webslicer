@@ -85,3 +85,134 @@ export function planAdaptiveLayers(parts, process) {
     return layer;
   });
 }
+
+/** Bounded, ordered control points in model-space millimeters. */
+export function validLayerCurve(points) {
+  return (
+    Array.isArray(points) &&
+    points.length >= 2 &&
+    points.length <= 128 &&
+    points.every(
+      (p, i) =>
+        p &&
+        typeof p === "object" &&
+        Number.isFinite(p.z) &&
+        p.z >= 0 &&
+        p.z <= 2000 &&
+        Number.isFinite(p.height) &&
+        p.height >= UNIT &&
+        p.height <= 2 &&
+        (i === 0 ? p.z === 0 : p.z - points[i - 1].z >= UNIT - 1e-9),
+    )
+  );
+}
+export function sampleLayerCurve(points, z) {
+  if (z <= points[0].z) return points[0].height;
+  let low = 1,
+    high = points.length - 1;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (points[mid].z < z) low = mid + 1;
+    else high = mid;
+  }
+  if (z <= points[low].z) {
+    const a = points[low - 1],
+      b = points[low];
+    return a.height + ((b.height - a.height) * (z - a.z)) / (b.z - a.z);
+  }
+  return points.at(-1).height;
+}
+/** One manual schedule shared by all objects/materials; targets are sampled at midplanes. */
+export function planManualLayers(parts, process) {
+  const points = process.stratumLayerCurve;
+  if (!points) return undefined;
+  if (!validLayerCurve(points))
+    throw new Error("Invalid manual layer-height curve.");
+  const minimum = Math.ceil(process.sliceMinHeight / UNIT - 1e-7);
+  const maximum = Math.floor(process.sliceHeight / UNIT + 1e-7);
+  const first = Math.round(process.firstSliceHeight / UNIT);
+  if (
+    ![minimum, maximum, first].every((v) => Number.isFinite(v) && v > 0) ||
+    minimum > maximum
+  )
+    throw new Error(
+      "Manual layer heights cannot be represented at the engine's precision.",
+    );
+  if (
+    points.some(
+      (p) =>
+        p.height < minimum * UNIT - 1e-9 || p.height > maximum * UNIT + 1e-9,
+    )
+  )
+    throw new Error(
+      "Manual curve heights must stay within the minimum and normal layer heights.",
+    );
+  let highest = 0;
+  for (const part of parts)
+    for (let i = 2; i < part.vertices.length; i += 3) {
+      const z = part.vertices[i];
+      if (!Number.isFinite(z))
+        throw new Error("Model contains a non-finite height.");
+      highest = Math.max(highest, Math.round(z / UNIT));
+    }
+  const tops = [first];
+  const push = (top) => {
+    if (tops.length >= LIMIT)
+      throw new Error(
+        "Manual slicing exceeds 100,000 layers. Increase the minimum layer height.",
+      );
+    tops.push(top);
+  };
+  while (tops.at(-1) < highest) {
+    const start = tops.at(-1),
+      remaining = highest - start;
+    // Solve h = target(start + h/2), bracketed by the legal height limits.
+    // Bisection remains bounded for steep curves where fixed-point iteration oscillates.
+    let low = minimum,
+      high = maximum;
+    for (let i = 0; i < 20; i++) {
+      const mid = (low + high) / 2;
+      if (mid < sampleLayerCurve(points, (start + mid / 2) * UNIT) / UNIT)
+        low = mid;
+      else high = mid;
+    }
+    const height = Math.max(
+      minimum,
+      Math.min(maximum, Math.round((low + high) / 2)),
+    );
+    if (remaining >= height) {
+      push(start + height);
+      continue;
+    }
+    if (remaining >= minimum) {
+      push(highest);
+      break;
+    }
+    // A sub-minimum final layer cannot be printed. Rebalance the shortest feasible
+    // tail, preserving the fixed first layer and all earlier curve-following layers.
+    let fitted = false;
+    for (let i = tops.length - 2; i >= 0; i--) {
+      const span = highest - tops[i],
+        count = Math.ceil(span / maximum);
+      if (count * minimum > span) continue;
+      const begin = tops[i];
+      tops.length = i + 1;
+      for (let j = 1; j <= count; j++)
+        push(begin + Math.round((span * j) / count));
+      fitted = true;
+      break;
+    }
+    if (!fitted && remaining > minimum / 2) push(start + minimum);
+    break;
+  }
+  let previous = 0;
+  return tops.map((top) => {
+    const layer = {
+      z: Math.round((top + previous) / 2) / 1000,
+      top: top / 1000,
+      height: (top - previous) * UNIT,
+    };
+    previous = top;
+    return layer;
+  });
+}

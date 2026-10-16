@@ -84,6 +84,7 @@ export function nozzleSettings(p: Printer): Partial<Settings> {
         ? 0.8
         : [0.4, 0.8, 1.4, 3][index];
   return {
+    manualLayers: false,
     layerHeight: round(n * 0.5),
     firstLayerHeight: round(n * 0.6),
     lineWidth: round(n * 1.05),

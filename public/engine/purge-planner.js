@@ -213,7 +213,8 @@ export function planKiriPurgeBlocks(widgets, settings, count) {
   }
   const tools = [...new Set(widgets.map((w) => w.anno.extruder ?? 0))];
   if (
-    widgets.some((w) => w.slices.some((s) => s.supports?.length)) &&
+    (process.outputRaft ||
+      widgets.some((w) => w.slices.some((s) => s.supports?.length))) &&
     !tools.includes(process.sliceSupportNozzle)
   )
     tools.push(process.sliceSupportNozzle);

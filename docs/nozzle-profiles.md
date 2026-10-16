@@ -8,7 +8,7 @@ Successful downloads are cached by printer, revision and diameter. A reload can 
 
 ## Settings and limits
 
-A diameter change resets the following geometry defaults: layer height = 50% of diameter, first layer = 60%, line width = 105%, adaptive minimum = 20% (at least 0.04 mm), and support clearance = one diameter. These are **Stratum defaults**, not a complete vendor process preset. The three quality shortcuts scale to 30%, 50% and 70%. Retraction lengths follow the pinned machine profiles below. Other settings, spool requirements, hardware configuration and purge budgets are preserved.
+A diameter change resets the following geometry defaults: layer height = 50% of diameter, first layer = 60%, line width = 105%, adaptive minimum = 20% (at least 0.04 mm), and support clearance = one diameter. These are **Stratum defaults**, not a complete vendor process preset. The three quality shortcuts scale to 30%, 50% and 70%. Retraction lengths follow the pinned machine profiles below. A diameter change disables manual layer-height mode while retaining its saved curve for review. Other settings, spool requirements, hardware configuration and purge budgets are preserved.
 
 | Nozzle | Minimum layer | Maximum layer | X1C / P1S / P1P / A1 mini retraction | A1 retraction | U1 retraction |
 |---|---|---|---|---|---|

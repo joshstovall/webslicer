@@ -171,3 +171,36 @@ it("reserves the pinned Bambu corner during placement, validation and assembly a
   expect(segmentHitsRectangle(19, 5, 19, 25, r, 0.21)).toBe(false);
   expect(segmentHitsRectangle(18.1, 5, 18.1, 25, r, 0.21)).toBe(true);
 });
+
+it("reserves transition capacity for a raft tool even when no model supports are generated", () => {
+  const widgets = [
+    {
+      anno: { extruder: 1 },
+      track: { pos: { x: 0, y: 0 } },
+      bounds: { min: { x: 0, y: 0 }, max: { x: 10, y: 10 } },
+      slices: [{ height: 0.2, supports: [] }],
+    },
+  ];
+  const settings = {
+    device: {
+      bedWidth: 256,
+      bedDepth: 256,
+      extruders: [0, 1, 2].map(() => ({ extNozzle: 0.4 })),
+    },
+    process: {
+      outputRaft: true,
+      outputPurgeTower: 100,
+      sliceLineWidth: 0.42,
+      firstSliceHeight: 0.2,
+      sliceHeight: 0.2,
+      sliceSupportNozzle: 2,
+      stratumPurgeVolume: 1,
+      stratumPurgeVolumes: { "2:1": 50 },
+      stratumFilamentFlows: [1, 1, 0.5],
+    },
+  };
+  const plan = planKiriPurgeBlocks(widgets, settings, 1)!;
+  expect(plan.positions).toHaveLength(1);
+  expect(plan.size).toBeGreaterThan(25);
+  expect(Number.isFinite(plan.size)).toBe(true);
+});

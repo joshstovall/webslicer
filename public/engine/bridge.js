@@ -1,4 +1,4 @@
-import { planAdaptiveLayers } from "./layer-plan.js";
+import { planAdaptiveLayers, planManualLayers } from "./layer-plan.js";
 // The engine lives in an isolated frame; removing it cancels all owned workers.
 let Engine, engineClient;
 let running = false;
@@ -49,7 +49,9 @@ window.addEventListener("message", async (e) => {
       .setDevice(device)
       .setProcess({
         ...process,
-        stratumLayerPlan: planAdaptiveLayers(parts, process),
+        stratumLayerPlan:
+          planManualLayers(parts, process) ??
+          planAdaptiveLayers(parts, process),
       })
       .setRender(false);
     engine.setListener((msg) => {

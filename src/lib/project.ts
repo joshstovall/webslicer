@@ -1,3 +1,4 @@
+import { validManualLayerSettings } from "./layer-height";
 import {
   validMaterialRequirements,
   validPrinterHardware,
@@ -139,6 +140,8 @@ export function validateProject(p: unknown): Project {
     v.settings.speed <= 0
   )
     throw new Error("Invalid layer height or print speed.");
+  if (!validManualLayerSettings(v.settings))
+    throw new Error("Invalid manual layer-height settings.");
   for (const m of v.models) {
     if (
       m.faceTools &&
