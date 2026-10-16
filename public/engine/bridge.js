@@ -73,6 +73,33 @@ window.addEventListener("message", async (e) => {
     // Preserve each part's tool assignment in a shared coordinate system.
     const groups = new Map();
     engine.settings.widget = {};
+    // Only spatially relevant neighbors need to be resliced for support occlusion.
+    const supportGeometry =
+      process.sliceSupportType === "disabled"
+        ? []
+        : parts.map((part) => {
+            const bounds = [
+              Infinity,
+              Infinity,
+              Infinity,
+              -Infinity,
+              -Infinity,
+              -Infinity,
+            ];
+            for (let i = 0; i < part.vertices.length; i += 3)
+              for (let axis = 0; axis < 3; axis++) {
+                bounds[axis] = Math.min(bounds[axis], part.vertices[i + axis]);
+                bounds[axis + 3] = Math.max(
+                  bounds[axis + 3],
+                  part.vertices[i + axis],
+                );
+              }
+            return {
+              name: part.name,
+              vertices: Array.from(part.vertices),
+              bounds,
+            };
+          });
     const widgets = parts.map((part, index) => {
       const id = part.assemblyId ?? `part-${index}`;
       if (!groups.has(id)) groups.set(id, []);
@@ -81,10 +108,37 @@ window.addEventListener("message", async (e) => {
       widget.track.grid_id = index;
       widget.meta.file = part.name;
       widget.anno.extruder = part.tool;
-      widget.anno.stratumModifiers = part.modifiers?.map((m) => ({
-        ...m,
-        vertices: Array.from(m.vertices),
-      }));
+      const own = supportGeometry[index];
+      const clearance =
+        (process.sliceSupportExtra || 0) +
+        (process.sliceSupportOffset || 0) +
+        (process.sliceLineWidth || 0.4) * 2;
+      widget.anno.stratumSupportPeers = own
+        ? supportGeometry.filter(
+            (peer, other) =>
+              index !== other &&
+              peer.bounds[2] < own.bounds[5] &&
+              [0, 1].every(
+                (axis) =>
+                  peer.bounds[axis] < own.bounds[axis + 3] + clearance &&
+                  peer.bounds[axis + 3] > own.bounds[axis] - clearance,
+              ),
+          )
+        : [];
+      widget.anno.stratumModifiers = part.modifiers
+        ?.filter((m) => !m.kind || m.kind === "infill")
+        .map((m) => ({
+          ...m,
+          vertices: Array.from(m.vertices),
+        }));
+      widget.anno.stratumSupportModifiers = part.modifiers
+        ?.filter(
+          (m) => m.kind === "support-enforcer" || m.kind === "support-blocker",
+        )
+        .map((m) => ({
+          ...m,
+          vertices: Array.from(m.vertices),
+        }));
       widget.setTopZ(widget.getBoundingBox().max.z);
       engine.settings.widget[widget.id] = { extruder: part.tool };
       return widget;

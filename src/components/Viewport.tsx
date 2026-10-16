@@ -598,11 +598,17 @@ export function Viewport(props: ViewportProps) {
           : model.modifiers;
       for (const modifier of modifiers ?? []) {
         if (!modifier.enabled) continue;
+        const color =
+          modifier.kind === "support-enforcer"
+            ? 0x2dba81
+            : modifier.kind === "support-blocker"
+              ? 0xef5261
+              : 0xd48b20;
         const geometry = geometryOf(modifier.positions, false);
         const volume = new THREE.Mesh(
           geometry,
           new THREE.MeshBasicMaterial({
-            color: 0xd48b20,
+            color,
             transparent: true,
             opacity: 0.15,
             depthWrite: false,
@@ -615,7 +621,7 @@ export function Viewport(props: ViewportProps) {
         const edges = new THREE.LineSegments(
           new THREE.EdgesGeometry(geometry),
           new THREE.LineBasicMaterial({
-            color: 0xc58320,
+            color,
             transparent: true,
             opacity: 0.85,
             depthTest: false,

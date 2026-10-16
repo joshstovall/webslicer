@@ -13,6 +13,7 @@ export const MODIFIER_PATTERNS = [
 ];
 export interface WorldModifier {
   name: string;
+  kind?: ModifierMesh["kind"];
   vertices: Float32Array;
   infill: number;
   infillPattern: string;
@@ -34,6 +35,8 @@ export function validateModifiers(value: unknown): ModifierMesh[] | undefined {
       ids.has(m.id) ||
       typeof m.name !== "string" ||
       typeof m.enabled !== "boolean" ||
+      (m.kind !== undefined &&
+        !["infill", "support-enforcer", "support-blocker"].includes(m.kind)) ||
       !vector(m.position) ||
       !vector(m.rotation) ||
       !vector(m.scale) ||
@@ -72,7 +75,18 @@ export function modifierErrors(models: Model[], settings: Settings): string[] {
       settings.vase &&
       models.some((m) => m.visible && m.modifiers?.some((v) => v.enabled))
     )
-      return ["Disable infill modifiers before using spiral vase mode."];
+      return ["Disable modifiers before using spiral vase mode."];
+    if (
+      settings.supports === "disabled" &&
+      models.some(
+        (m) =>
+          m.visible &&
+          m.modifiers?.some((v) => v.enabled && v.kind === "support-enforcer"),
+      )
+    )
+      return [
+        "Enable Automatic or Enforced only supports to use support enforcers.",
+      ];
     return [];
   } catch (error) {
     return [(error as Error).message];
@@ -90,6 +104,7 @@ export function worldModifiers(model: Model): WorldModifier[] {
         point.fromArray(vertices, i).applyMatrix4(matrix).toArray(vertices, i);
       return {
         name: m.name,
+        kind: m.kind,
         vertices,
         infill: m.infill,
         infillPattern: m.infillPattern,

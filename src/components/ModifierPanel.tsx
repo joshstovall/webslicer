@@ -80,16 +80,17 @@ export function ModifierPanel({
       opened
       position={compact ? "bottom" : "right"}
       size={compact ? "65%" : 390}
-      title="Infill modifiers"
+      title="Object modifiers"
       onClose={onClose}
       overlayProps={{ backgroundOpacity: 0.08 }}
       closeOnClickOutside={false}
     >
       <Stack gap="sm">
         <Text size="sm">
-          Change infill inside a volume on {model.name}
+          Change infill or support contacts inside a volume on {model.name}
           {model.assemblyId ? " and its linked parts" : ""}. Later volumes take
-          priority. Walls and top/bottom surfaces stay intact.
+          priority within each setting. Walls and top/bottom surfaces stay
+          intact.
         </Text>
         <Text size="xs" c="dimmed">
           Modifier positions, rotations and scales are relative to this part.
@@ -194,36 +195,62 @@ export function ModifierPanel({
               checked={item.enabled}
               onChange={(e) => update({ enabled: e.currentTarget.checked })}
             />
-            <NumberInput
-              label="Modifier infill density"
-              min={0}
-              max={100}
-              suffix=" %"
-              value={item.infill}
-              onChange={(v) =>
-                typeof v === "number" &&
-                update({ infill: Math.max(0, Math.min(100, v)) })
-              }
-            />
             <Select
-              label="Modifier infill pattern"
-              value={item.infillPattern}
-              data={MODIFIER_PATTERNS.map((value) => ({
-                value,
-                label: (
-                  {
-                    gyroid: "Gyroid",
-                    grid: "Grid",
-                    hex: "Honeycomb",
-                    triangle: "Triangles",
-                    linear: "Lines",
-                    cubic: "Cubic",
-                  } as Record<string, string>
-                )[value],
-              }))}
+              label="Modifier effect"
+              value={item.kind ?? "infill"}
+              data={[
+                { value: "infill", label: "Infill density and pattern" },
+                {
+                  value: "support-enforcer",
+                  label: "Enforce support contacts",
+                },
+                { value: "support-blocker", label: "Block support contacts" },
+              ]}
               allowDeselect={false}
-              onChange={(v) => v && update({ infillPattern: v })}
+              onChange={(v) => v && update({ kind: v as ModifierMesh["kind"] })}
             />
+            {item.kind?.startsWith("support-") ? (
+              <Text size="sm">
+                Cover the underside that needs support. Enforcers add contacts
+                regardless of the overhang angle; blockers remove contacts.
+                Supports from higher contacts can still pass through a blocker.
+                Enable Automatic or Enforced only supports in print settings.
+                Green volumes enforce; red volumes block.
+              </Text>
+            ) : (
+              <>
+                <NumberInput
+                  label="Modifier infill density"
+                  min={0}
+                  max={100}
+                  suffix=" %"
+                  value={item.infill}
+                  onChange={(v) =>
+                    typeof v === "number" &&
+                    update({ infill: Math.max(0, Math.min(100, v)) })
+                  }
+                />
+                <Select
+                  label="Modifier infill pattern"
+                  value={item.infillPattern}
+                  data={MODIFIER_PATTERNS.map((value) => ({
+                    value,
+                    label: (
+                      {
+                        gyroid: "Gyroid",
+                        grid: "Grid",
+                        hex: "Honeycomb",
+                        triangle: "Triangles",
+                        linear: "Lines",
+                        cubic: "Cubic",
+                      } as Record<string, string>
+                    )[value],
+                  }))}
+                  allowDeselect={false}
+                  onChange={(v) => v && update({ infillPattern: v })}
+                />
+              </>
+            )}
             {(["position", "rotation", "scale"] as const).map((key) => (
               <div key={key}>
                 <Text size="xs" fw={600}>

@@ -189,10 +189,10 @@ for (const width of [1440, 390])
     const open = async () => {
       if (phone) await button("Objects 1").click();
       await button("Modifier block").click();
-      await page.getByRole("button", { name: /^Infill modifiers/ }).click();
+      await page.getByRole("button", { name: /^Object modifiers/ }).click();
     };
     await open();
-    const dialog = page.getByRole("dialog", { name: "Infill modifiers" });
+    const dialog = page.getByRole("dialog", { name: "Object modifiers" });
     await button("Add sphere").click();
     await button("Cancel").click();
     await expect(dialog).not.toBeVisible();

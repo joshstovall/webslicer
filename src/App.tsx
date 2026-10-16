@@ -1203,7 +1203,7 @@ function App() {
               view("modifier-fit");
             }}
           >
-            Infill modifiers
+            Object modifiers
             {model.modifiers?.length ? ` (${model.modifiers.length})` : ""}
           </Button>
           <TextInput
@@ -3129,7 +3129,7 @@ function App() {
             </Tabs.Panel>
             <Tabs.Panel value="about" pt="md">
               <Text size="sm">
-                Multi-tool FDM slicing with automatic normal/tree supports,
+                Multi-tool FDM slicing with automatic normal supports,
                 adaptive and manual variable layers, spiral vase, multiple
                 infill patterns, and skirt/brim/raft. Multiple objects and
                 plates, G-code inspection, and reusable print presets are

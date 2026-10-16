@@ -106,6 +106,11 @@ export async function slicePlate(
             filaments,
           });
           result.warnings.push(
+            ...(settings.supports === "tree"
+              ? [
+                  "This project's legacy tree-support setting generates normal supports. Branching tree supports are not implemented yet.",
+                ]
+              : []),
             ...cooled.warnings,
             ...materialCompatibility(
               models,

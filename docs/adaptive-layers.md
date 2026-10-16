@@ -30,7 +30,7 @@ Upstream reference: Kiri:Moto [slice processing](https://github.com/GridSpace/gr
 
 ## Verification and limits
 
-Core checks cover interval feasibility, part-order independence, duplicate landmarks, a short final interval, equal min/max, odd-micron first layers, dense irregular geometry and bounded failure. Real-engine checks cover unequal-height multi-tool parts, fixed-height short parts, extrusion per actual layer height, linked stacked colors without false bridges, normal/tree dedicated supports, raft offsets and variable-height spiral extrusion. Desktop Bambu and phone U1 UI checks enable the setting, recover it after reload and export real multicolor jobs.
+Core checks cover interval feasibility, part-order independence, duplicate landmarks, a short final interval, equal min/max, odd-micron first layers, dense irregular geometry and bounded failure. Real-engine checks cover unequal-height multi-tool parts, fixed-height short parts, extrusion per actual layer height, linked stacked colors without false bridges, normal dedicated supports and the legacy tree flag (which does not generate branches), raft offsets and variable-height spiral extrusion. Desktop Bambu and phone U1 UI checks enable the setting, recover it after reload and export real multicolor jobs.
 
 Manual-curve checks additionally cover interpolation, steep transitions, tail fitting, malformed imports, nozzle changes, raw E/XY extrusion, touch/pointer editing, cancel, undo/redo, recovery and portable downloads. Raft cases include sparse nonzero model/support slots, no generated supports, single-material jobs, tower foundations and actual Bambu/U1 template compilation.
 

@@ -12,6 +12,7 @@ import {
   Tooltip,
   ActionIcon,
   Badge,
+  Text,
 } from "@mantine/core";
 import {
   Printer as PrinterIcon,
@@ -348,12 +349,22 @@ export function SettingsPanel({
           {select("supports", "Support generation", [
             { value: "disabled", label: "Disabled" },
             { value: "auto", label: "Automatic · normal" },
-            { value: "tree", label: "Automatic · tree" },
+            { value: "manual", label: "Enforced only" },
+            ...(s.supports === "tree"
+              ? [{ value: "tree", label: "Legacy tree · normal output" }]
+              : []),
           ])}
+          {s.supports === "tree" && (
+            <Text size="xs" c="orange">
+              This saved mode generates normal supports. Branching tree supports
+              are not implemented yet.
+            </Text>
+          )}
           {s.supports !== "disabled" && (
             <>
               <div className="field-pair">
-                {number("supportAngle", "Overhang angle", 15, 85, 1, "°")}
+                {s.supports !== "manual" &&
+                  number("supportAngle", "Overhang angle", 15, 85, 1, "°")}
                 {number("supportDensity", "Density", 5, 80, 1, " %")}
               </div>
               {advanced &&

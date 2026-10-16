@@ -8,6 +8,8 @@ export interface ModifierMesh {
   rotation: Vec3;
   scale: Vec3;
   enabled: boolean;
+  /** Missing on older projects means infill. Support volumes select overhang contacts. */
+  kind?: "infill" | "support-enforcer" | "support-blocker";
   infill: number;
   infillPattern: string;
 }

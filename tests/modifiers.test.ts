@@ -75,11 +75,27 @@ it("validates portable modifier meshes and rejects incompatible modes before sli
     { positions: [0, 0, 0] },
     { positions: Array(108).fill(1e100) },
     { enabled: "yes" },
+    { kind: "unknown" },
   ])
     expect(() => validateModifiers([{ ...modifier(), ...patch }])).toThrow();
   expect(() => validateModifiers(Array.from({ length: 33 }, modifier))).toThrow(
     /32/,
   );
+});
+it("keeps support effects distinct and requires enabled supports for active enforcers", () => {
+  const m = source();
+  m.modifiers![0].kind = "support-enforcer";
+  expect(validateModifiers(m.modifiers)![0].kind).toBe("support-enforcer");
+  expect(worldModifiers(m)[0].kind).toBe("support-enforcer");
+  expect(modifierErrors([m], DEFAULT_SETTINGS)[0]).toMatch(/Enable Automatic/);
+  expect(
+    modifierErrors([m], { ...DEFAULT_SETTINGS, supports: "manual" }),
+  ).toEqual([]);
+  m.modifiers![0].enabled = false;
+  expect(modifierErrors([m], DEFAULT_SETTINGS)).toEqual([]);
+  m.modifiers![0].enabled = true;
+  m.modifiers![0].kind = "support-blocker";
+  expect(modifierErrors([m], DEFAULT_SETTINGS)).toEqual([]);
 });
 it("validates closed volumes in the material worker and rejects open or zero-volume meshes", () => {
   const model = source();
@@ -142,6 +158,7 @@ it("applies modifiers to linked and painted materials but not unrelated objects 
 });
 it("preserves disabled masks and world placement when cutting and grounding a modified object", () => {
   const model = source();
+  model.modifiers![0].kind = "support-blocker";
   model.modifiers!.push({ ...modifier(), id: "disabled", enabled: false });
   const operation = {
     kind: "cut",
@@ -160,6 +177,7 @@ it("preserves disabled masks and world placement when cutting and grounding a mo
   expect(result).toHaveLength(2);
   for (const [i, m] of result.entries()) {
     expect(m.modifiers).toHaveLength(2);
+    expect(m.modifiers![0].kind).toBe("support-blocker");
     expect(m.modifiers![1].enabled).toBe(false);
     const expected = worldModifiers(model)[0].vertices.slice();
     for (let j = 2; j < expected.length; j += 3) expected[j] -= i * 10;
