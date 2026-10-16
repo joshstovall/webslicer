@@ -80,7 +80,7 @@ it("includes sliced support extents and adhesion, and scales capacity for thin l
   const plan = planKiriPurgeBlocks(widgets, settings, 1)!;
   expect(plan.positions[0].y - plan.size / 2).toBeGreaterThan(15);
   expect(plan.size).toBeGreaterThan(25);
-  expect(plan.size).toBeLessThan(30); // unused tool 1's 2000 mm³ override is excluded
+  expect(plan.size).toBeLessThan(35); // unused tool 1's 2000 mm³ override is excluded
   const higher = planKiriPurgeBlocks(
     widgets.map((w) => ({
       ...w,

@@ -171,14 +171,15 @@ export function planKiriPurgeBlocks(widgets, settings, count) {
     if (!(height > 0 && flow > 0 && Number.isFinite(volume)))
       throw new Error("Invalid purge capacity settings.");
     // Pinned Kiri export uses pi * lineWidth * layerHeight / 4 as the
-    // extrusion cross-section. Dense tower tracks are nozzle-width apart.
-    // Four nozzle widths allow for clipped diagonal rows at the boundary.
+    // extrusion cross-section. Every sixth row is reserved for structure.
+    // Reserve 20% more interior area and four line widths at the boundary.
     // A separate G-code audit checks actual delivered volume before export.
     size =
       Math.sqrt(
-        (volume * nozzle) / (((Math.PI * lineWidth * height) / 4) * flow),
+        (volume * lineWidth * 1.2) /
+          (((Math.PI * lineWidth * height) / 4) * flow),
       ) +
-      4 * nozzle;
+      4 * Math.max(nozzle, lineWidth);
   }
   return {
     size,
@@ -191,4 +192,84 @@ export function planKiriPurgeBlocks(widgets, settings, count) {
       obstacles: [...unique.values()],
     }),
   };
+}
+
+/** Independent tower paths. Priming is metered separately from structural paths.
+ * Dense first-layer foundations and one-in-six rows on later layers support
+ * future changes without densely filling every block to the largest budget.
+ */
+export function planPurgePaths({
+  bounds,
+  z,
+  volume,
+  first,
+  layer,
+  lineWidth,
+  height,
+  flow,
+}) {
+  const { minx, maxx, miny, maxy } = bounds;
+  const section = (Math.PI * lineWidth * height * flow) / 4;
+  if (
+    ![minx, maxx, miny, maxy, z, volume, section].every(Number.isFinite) ||
+    volume < 0 ||
+    section <= 0 ||
+    lineWidth <= 0
+  )
+    throw new Error("Invalid metered purge geometry.");
+  const inset = lineWidth;
+  const horizontal = layer % 2 === 0;
+  const left = (horizontal ? minx : miny) + inset;
+  const right = (horizontal ? maxx : maxy) - inset;
+  const low = (horizontal ? miny : minx) + inset;
+  const high = (horizontal ? maxy : maxx) - inset;
+  const count = Math.ceil((high - low) / lineWidth) + 1;
+  if (right <= left || count < 2 || count > 10000)
+    throw new Error("Purge block has no usable interior.");
+  const point = (a, b) => (horizontal ? [a, b, z] : [b, a, z]);
+  const prime = [],
+    structure = [
+      {
+        kind: "structure",
+        points: [
+          [minx, miny, z],
+          [minx, maxy, z],
+          [maxx, maxy, z],
+          [maxx, miny, z],
+          [minx, miny, z],
+        ],
+      },
+    ];
+  // Small explicit rounding reserve; the final G-code audit permits 0.05 mm³.
+  let remaining = volume > 0 ? (volume + 0.02) / section : 0;
+  for (let row = 0; row < count; row++) {
+    const b = low + (row * (high - low)) / (count - 1);
+    const a = row % 2 ? right : left,
+      end = row % 2 ? left : right;
+    const length = right - left;
+    const base = row % 6 === 0 || row === count - 1;
+    if (base) {
+      structure.push({
+        kind: "structure",
+        points: [point(a, b), point(end, b)],
+      });
+      continue;
+    }
+    const used = Math.min(length, remaining);
+    const split = a + Math.sign(end - a) * used;
+    if (used > 1e-8)
+      prime.push({ kind: "prime", points: [point(a, b), point(split, b)] });
+    if (first && length - used > 1e-8)
+      structure.push({
+        kind: "structure",
+        points: [point(split, b), point(end, b)],
+      });
+    remaining -= used;
+  }
+  if (remaining * section > 1e-6)
+    throw new Error(
+      "Purge block cannot deliver the requested transition volume. No G-code was exported.",
+    );
+  // Perimeter first anchors the footprint; both budgets finish before the part.
+  return [structure[0], ...prime, ...structure.slice(1)];
 }

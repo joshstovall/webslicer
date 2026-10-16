@@ -62,7 +62,31 @@ export function maximumPurgeVolume(
     ),
   );
 }
-export function validPurgeOverrides(value: unknown): boolean {
+export function independentPurgeBudgets(
+  multi: MultiMaterialSettings,
+): MultiMaterialSettings {
+  return {
+    ...multi,
+    flushVolume:
+      multi.flushVolume === undefined ? multi.purgeVolume : multi.flushVolume,
+    flushVolumes:
+      multi.flushVolumes === undefined
+        ? multi.flushVolume === undefined
+          ? { ...multi.purgeVolumes }
+          : {}
+        : multi.flushVolumes,
+  };
+}
+export function flushVolumeFor(
+  multi: MultiMaterialSettings,
+  from: number,
+  to: number,
+): number {
+  if (from === to) return 0;
+  const budgets = independentPurgeBudgets(multi);
+  return budgets.flushVolumes?.[`${from}:${to}`] ?? budgets.flushVolume!;
+}
+export function validPurgeOverrides(value: unknown, minimum = 1): boolean {
   if (value === undefined) return true;
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   return Object.entries(value).every(([key, volume]) => {
@@ -73,7 +97,7 @@ export function validPurgeOverrides(value: unknown): boolean {
       Number(match[2]) < 64 &&
       typeof volume === "number" &&
       Number.isFinite(volume) &&
-      volume >= 1 &&
+      volume >= minimum &&
       volume <= 2000
     );
   });
@@ -143,5 +167,13 @@ export function materialErrors(
     errors.push(
       "Invalid directional purge volumes. Use 1–2000 mm³ per change.",
     );
+  if (
+    (multi.flushVolume !== undefined &&
+      (!Number.isFinite(multi.flushVolume) ||
+        multi.flushVolume < 0 ||
+        multi.flushVolume > 2000)) ||
+    !validPurgeOverrides(multi.flushVolumes, 0)
+  )
+    errors.push("Station flushing volumes must be between 0 and 2000 mm³.");
   return errors;
 }

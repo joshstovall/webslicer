@@ -63,7 +63,7 @@ for (const crowded of [false, true])
       ) {
         if (feature === "purge tower")
           volume += amount * Math.PI * (1.75 / 2) ** 2;
-        else {
+        else if (feature !== "purge tower structure") {
           volumes.push(volume);
           pending = false;
         }
@@ -72,7 +72,7 @@ for (const crowded of [false, true])
     expect(changes).toBeGreaterThan(2);
     expect(volumes).toHaveLength(changes);
     expect(
-      volumes.every((v) => v >= 20),
+      volumes.every((v) => v >= 20 && v <= 20.05),
       JSON.stringify(volumes),
     ).toBe(true);
     for (const l of result.layers)
@@ -136,7 +136,11 @@ test("thin layers and low-flow materials still receive the requested directional
   });
   expect(changes.length).toBeGreaterThan(3);
   expect(new Set(changes.map((c) => c.required))).toEqual(new Set([12, 30]));
-  expect(changes.every((c) => c.deposited >= c.required)).toBe(true);
+  expect(
+    changes.every(
+      (c) => c.deposited >= c.required && c.deposited <= c.required + 0.05,
+    ),
+  ).toBe(true);
 });
 
 test("a full plate fails clearly and releases its workers instead of exporting an overlapping tower", async ({
@@ -181,4 +185,80 @@ test("a full plate fails clearly and releases its workers instead of exporting a
   await expect(
     page.locator('iframe[title="Local slicing engine"]'),
   ).toHaveCount(0);
+});
+
+test("extreme directional budgets retain exact physical volume across thin layers and flow ratios", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const changes = await page.evaluate(async () => {
+    const { primitive } = await import("/src/lib/geometry.ts");
+    const { slicePlate } = await import("/src/lib/slicer.ts");
+    const { auditPurgeVolumes } = await import("/src/lib/purge-audit.ts");
+    const { PRINTERS, DEFAULT_SETTINGS } = await import("/src/lib/profiles.ts");
+    const { defaultFilament, DEFAULT_MULTI_MATERIAL } = await import(
+      "/src/lib/multimaterial.ts"
+    );
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      adhesion: "none",
+      firstLayerHeight: 0.08,
+      layerHeight: 0.08,
+      flow: 0.5,
+    };
+    const printer = {
+      ...PRINTERS.find((p) => p.id === "generic-multi")!,
+      bed: [270, 270, 270],
+    };
+    const models = [0, 1].map((tool) => ({
+      ...primitive("cube", 1),
+      tool,
+      scale: [0.2, 0.2, 0.012],
+      position: [125, tool ? 8 : -8, 0],
+    }));
+    const multi = {
+      ...DEFAULT_MULTI_MATERIAL,
+      purgeVolume: 1,
+      purgeVolumes: { "0:1": 2000 },
+    };
+    const filaments = [0, 1].map((i) => ({
+      ...defaultFilament(settings, i),
+      flow: i ? 0.5 : 1.5,
+    }));
+    // The extreme budget needs a 278 mm block at this thin/low-flow setting.
+    // Reject the undersized bed, then verify a corrected job can run immediately.
+    let rejected = false;
+    try {
+      await slicePlate(
+        models,
+        printer,
+        settings,
+        () => {},
+        new AbortController().signal,
+        filaments,
+        multi,
+      );
+    } catch (error) {
+      if (!String(error).includes("No room for 1 purge block")) throw error;
+      rejected = true;
+    }
+    if (!rejected)
+      throw new Error(
+        "An undersized bed unexpectedly accepted the large purge block.",
+      );
+    const result = await slicePlate(
+      models.map((m) => ({ ...m, position: [143, m.position[1], 0] })),
+      { ...printer, bed: [300, 300, 300] },
+      settings,
+      () => {},
+      new AbortController().signal,
+      filaments,
+      multi,
+    );
+    return auditPurgeVolumes(result.gcode, 1.75, multi, true);
+  });
+  expect(new Set(changes.map((c) => c.required))).toEqual(new Set([1, 2000]));
+  expect(changes.every((c) => Math.abs(c.required - c.deposited) <= 0.05)).toBe(
+    true,
+  );
 });

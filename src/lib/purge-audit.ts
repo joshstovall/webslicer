@@ -8,6 +8,7 @@ export function auditPurgeVolumes(
   gcode: string,
   diameter: number,
   multi: MultiMaterialSettings,
+  exact = false,
 ) {
   if (!multi.purgeTower) return [];
   const area = Math.PI * (diameter / 2) ** 2;
@@ -24,7 +25,10 @@ export function auditPurgeVolumes(
     relative = false;
   const finish = () => {
     if (!pending) return;
-    if (pending.deposited + 0.05 < pending.required)
+    if (
+      pending.deposited + 0.05 < pending.required ||
+      (exact && pending.deposited > pending.required + 0.05)
+    )
       throw new Error(
         `Purge tower delivered ${pending.deposited.toFixed(1)} of ${pending.required.toFixed(1)} mm³ before filament ${pending.to + 1}. No G-code was exported.`,
       );
@@ -65,7 +69,7 @@ export function auditPurgeVolumes(
           "Purge verification requires relative extrusion in the generated print region.",
         );
       if (feature === "purge tower") pending.deposited += amount * area;
-      else finish();
+      else if (feature !== "purge tower structure") finish();
     }
   }
   finish();

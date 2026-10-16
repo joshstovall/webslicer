@@ -73,7 +73,7 @@ export async function slicePlate(
             settings,
             filaments,
           );
-          auditPurgeVolumes(planned, printer.filament, multi);
+          auditPurgeVolumes(planned, printer.filament, multi, true);
           const compiled = compileMachineGcode(
             planned,
             printer,
@@ -182,6 +182,7 @@ export async function slicePlate(
               }),
               outputMaxFlowrate: Math.max(...filaments.map((f) => f.maxFlow)),
               stratumPurgeVolume: multi.purgeVolume,
+              stratumExactPurge: true,
               stratumPurgeVolumes: multi.purgeVolumes,
               stratumFilamentFlows: filaments.map((f) => f.flow),
             },

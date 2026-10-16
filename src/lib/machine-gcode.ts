@@ -5,7 +5,7 @@ import type {
   Settings,
 } from "../types";
 import { parseGcode } from "./gcode";
-import { purgeVolumeFor } from "./multimaterial";
+import { flushVolumeFor } from "./multimaterial";
 import { renderGcodeTemplate, type TemplateContext } from "./gcode-template";
 
 /** Expand vendor templates after path planning, when positions and tool order are known. */
@@ -137,7 +137,7 @@ export function compileMachineGcode(
     if (change) {
       const previous = Number(change[1]),
         next = Number(change[2]);
-      const length = purgeVolumeFor(multi, previous, next) / area;
+      const length = flushVolumeFor(multi, previous, next) / area;
       Object.assign(context, {
         previous_extruder: previous,
         next_extruder: next,

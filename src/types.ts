@@ -39,6 +39,9 @@ export interface MultiMaterialSettings {
   purgeVolume: number;
   /** Directional overrides in mm³, keyed by zero-based "from:to" slots. */
   purgeVolumes?: Record<string, number>;
+  /** Independent Bambu station flush budget; omitted fields migrate from legacy tower budgets. */
+  flushVolume?: number;
+  flushVolumes?: Record<string, number>;
   supportTool: number;
 }
 export interface Printer {

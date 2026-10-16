@@ -5,6 +5,7 @@ import {
   defaultFilament,
   DEFAULT_MULTI_MATERIAL,
   validPurgeOverrides,
+  independentPurgeBudgets,
 } from "./multimaterial";
 import { DEFAULT_SETTINGS, PRINTERS } from "./profiles";
 import { settingsForFilament } from "./material-settings";
@@ -196,10 +197,17 @@ export function validateProject(p: unknown): Project {
   for (const m of models)
     if (m.faceTools?.some((t) => t >= filaments.length))
       throw new Error("Invalid triangle filament assignment.");
-  const multiMaterial = { ...DEFAULT_MULTI_MATERIAL, ...v.multiMaterial };
+  const multiMaterial = independentPurgeBudgets({
+    ...DEFAULT_MULTI_MATERIAL,
+    ...v.multiMaterial,
+  });
   if (
     !Number.isFinite(multiMaterial.purgeVolume) ||
     !validPurgeOverrides(multiMaterial.purgeVolumes) ||
+    !validPurgeOverrides(multiMaterial.flushVolumes, 0) ||
+    !Number.isFinite(multiMaterial.flushVolume) ||
+    multiMaterial.flushVolume! < 0 ||
+    multiMaterial.flushVolume! > 2000 ||
     multiMaterial.purgeVolume < 1 ||
     multiMaterial.purgeVolume > 2000 ||
     !Number.isInteger(multiMaterial.supportTool) ||

@@ -13,7 +13,7 @@
     {
       "path": "public/engine/kiri-work.js",
       "url": "https://grid.space/lib/pack/kiri-work.js",
-      "sha256": "0ce6a262d394df385bb0d6d37035d666edf416fccc74c6fee2f7e22192de5657",
+      "sha256": "439e2098760d3dcf2de71e8f085c7498e152c228dc0323b5b59cef57f9e08e8e",
       "modified": true
     },
     {
@@ -38,7 +38,7 @@
   "localSupportFiles": [
     {
       "path": "public/engine/purge-planner.js",
-      "sha256": "09336f17154c7be5c6ba06032471b480a604f46208489c44a29e05e3275c0274"
+      "sha256": "1d5e263e08b36e9b88ce51850f1f73d701183e78c4ee3b41d6918abc69a4329d"
     },
     {
       "path": "public/engine/bridge.js",

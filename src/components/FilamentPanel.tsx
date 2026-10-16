@@ -18,7 +18,12 @@ import type {
   Printer,
   Settings,
 } from "../types";
-import { defaultFilament, purgeVolumeFor } from "../lib/multimaterial";
+import {
+  defaultFilament,
+  purgeVolumeFor,
+  flushVolumeFor,
+  independentPurgeBudgets,
+} from "../lib/multimaterial";
 import { thermalLimits } from "../lib/thermal-limits";
 import { MATERIALS } from "../lib/profiles";
 interface Props {
@@ -31,12 +36,13 @@ interface Props {
 }
 export function FilamentPanel({
   filaments,
-  multi,
+  multi: storedMulti,
   printer,
   settings,
   usedTools,
   onChange,
 }: Props) {
+  const multi = independentPurgeBudgets(storedMulti);
   const [purgeFrom, setPurgeFrom] = useState("0"),
     [purgeTo, setPurgeTo] = useState("1");
   const from = Math.min(Number(purgeFrom), filaments.length - 1);
@@ -260,6 +266,11 @@ export function FilamentPanel({
                             ([key]) => !key.split(":").includes(String(i)),
                           ),
                         ),
+                        flushVolumes: Object.fromEntries(
+                          Object.entries(multi.flushVolumes ?? {}).filter(
+                            ([key]) => !key.split(":").includes(String(i)),
+                          ),
+                        ),
                       })
                     }
                   >
@@ -309,6 +320,22 @@ export function FilamentPanel({
               })
             }
           />
+          {printer.firmware === "bambu" && (
+            <NumberInput
+              label="Station flushing volume per change"
+              description="Flush at the Bambu purge station, separately from tower priming. Machine loading routines may extrude additional material."
+              value={multi.flushVolume}
+              min={0}
+              max={2000}
+              suffix=" mm³"
+              onChange={(v) =>
+                typeof v === "number" &&
+                v >= 0 &&
+                v <= 2000 &&
+                onChange(filaments, { ...multi, flushVolume: v })
+              }
+            />
+          )}
           {multi.purgeTower && (
             <Stack gap="sm">
               <Text size="xs" c="dimmed">
@@ -317,7 +344,8 @@ export function FilamentPanel({
                 change.
               </Text>
               <NumberInput
-                label="Minimum purge volume per change"
+                label="Tower priming volume per change"
+                description="Each transition deposits this amount plus the material needed to support the tower."
                 value={multi.purgeVolume}
                 min={1}
                 max={2000}
@@ -338,10 +366,10 @@ export function FilamentPanel({
                     <Accordion.Panel>
                       <Stack gap="sm">
                         <Text size="xs" c="dimmed">
-                          Override individual changes in mm³. Bambu uses these
-                          volumes at its purge station. The tower reserves the
-                          largest volume needed by the active filaments and may
-                          use more to maintain its structure.
+                          Set tower priming for each change in mm³. The
+                          footprint reserves the largest active budget; each
+                          change uses its own amount. Foundation and support
+                          paths are additional.
                         </Text>
                         <Select
                           label="Purge from filament"
@@ -395,6 +423,44 @@ export function FilamentPanel({
                         >
                           Use default for this change
                         </Button>
+                        {printer.firmware === "bambu" && (
+                          <>
+                            <NumberInput
+                              label="Station flushing for this change"
+                              value={flushVolumeFor(multi, from, to)}
+                              disabled={from === to}
+                              min={0}
+                              max={2000}
+                              suffix=" mm³"
+                              onChange={(v) =>
+                                typeof v === "number" &&
+                                v >= 0 &&
+                                v <= 2000 &&
+                                onChange(filaments, {
+                                  ...multi,
+                                  flushVolumes: {
+                                    ...multi.flushVolumes,
+                                    [pair]: v,
+                                  },
+                                })
+                              }
+                            />
+                            <Button
+                              size="xs"
+                              variant="subtle"
+                              disabled={
+                                multi.flushVolumes?.[pair] === undefined
+                              }
+                              onClick={() => {
+                                const flushVolumes = { ...multi.flushVolumes };
+                                delete flushVolumes[pair];
+                                onChange(filaments, { ...multi, flushVolumes });
+                              }}
+                            >
+                              Use station default for this change
+                            </Button>
+                          </>
+                        )}
                       </Stack>
                     </Accordion.Panel>
                   </Accordion.Item>
