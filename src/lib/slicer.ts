@@ -1,3 +1,4 @@
+import { supportInterfaceErrors } from "./support-interface-settings";
 import { treeSettingErrors } from "./tree-settings";
 import {
   engineEntry,
@@ -45,6 +46,7 @@ export async function slicePlate(
   const errors = [
     ...materialErrors(models, printer, filaments, settings, multi),
     ...modifierErrors(models, settings),
+    ...supportInterfaceErrors(settings),
     ...(settings.supports.startsWith("tree")
       ? treeSettingErrors(settings)
       : []),

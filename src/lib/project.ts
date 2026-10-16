@@ -1,3 +1,4 @@
+import { supportInterfaceErrors } from "./support-interface-settings";
 import { treeSettingErrors, TREE_LIMITS } from "./tree-settings";
 import { validateModifiers } from "./modifiers";
 import { validateSupportPaint } from "./support-paint";
@@ -164,6 +165,8 @@ export function validateProject(p: unknown): Project {
     const errors = treeSettingErrors(v.settings);
     if (errors.length) throw new Error(errors.join("\n"));
   }
+  const interfaceErrors = supportInterfaceErrors(v.settings);
+  if (interfaceErrors.length) throw new Error(interfaceErrors.join("\n"));
   if (!validManualLayerSettings(v.settings))
     throw new Error("Invalid manual layer-height settings.");
   for (const m of v.models) {

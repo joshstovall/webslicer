@@ -148,6 +148,10 @@ export interface Settings {
   supportDensity: number;
   supportAngle: number;
   supportOffset: number;
+  supportTopInterfaceLayers?: number;
+  supportBottomInterfaceLayers?: number;
+  supportInterfaceDensity?: number;
+  supportInterfaceAngle?: number;
   treeBranchAngle?: number;
   treeBranchSpacing?: number;
   treeTipDiameter?: number;

@@ -1,3 +1,4 @@
+import { supportInterfaceSettings } from "./support-interface-settings";
 import { treeSettings } from "./tree-settings";
 import type {
   Printer,
@@ -196,6 +197,14 @@ export function processProfile(s: Settings, multi?: MultiMaterialSettings) {
     stratumTreeSpacing: treeSettings(s).treeBranchSpacing,
     stratumTreeTipDiameter: treeSettings(s).treeTipDiameter,
     stratumTreeBranchDiameter: treeSettings(s).treeBranchDiameter,
+    stratumSupportTopLayers:
+      supportInterfaceSettings(s).supportTopInterfaceLayers,
+    stratumSupportBottomLayers:
+      supportInterfaceSettings(s).supportBottomInterfaceLayers,
+    stratumSupportInterfaceDensity:
+      supportInterfaceSettings(s).supportInterfaceDensity / 100,
+    stratumSupportInterfaceAngle:
+      supportInterfaceSettings(s).supportInterfaceAngle,
     sliceSupportDensity: s.supportDensity / 100,
     sliceSupportAngle: s.supportAngle,
     sliceSupportOffset: s.supportOffset,

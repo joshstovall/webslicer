@@ -1,3 +1,4 @@
+import { supportInterfaceSettings } from "../lib/support-interface-settings";
 import { treeSettings } from "../lib/tree-settings";
 import { LayerHeightEditor } from "./LayerHeightEditor";
 import { flatLayerCurve, manualLayerErrors } from "../lib/layer-height";
@@ -74,9 +75,11 @@ export function SettingsPanel({
         label={label}
         value={
           (s[key] ??
-            (treeSettings(s) as Partial<Record<keyof Settings, number>>)[
-              key
-            ]) as number
+            (
+              { ...treeSettings(s), ...supportInterfaceSettings(s) } as Partial<
+                Record<keyof Settings, number>
+              >
+            )[key]) as number
         }
         error={
           (s[key] as number) > max || (s[key] as number) < min
@@ -349,7 +352,8 @@ export function SettingsPanel({
       title: "Support & adhesion",
       icon: GitBranch,
       summary: s.supports === "disabled" ? "Off" : "On",
-      keywords: "support tree brim skirt raft overhang",
+      keywords:
+        "support interface contact density tree brim skirt raft overhang",
       content: (
         <>
           {select("supports", "Support generation", [
@@ -410,8 +414,57 @@ export function SettingsPanel({
               <div className="field-pair">
                 {!["manual", "tree-manual"].includes(s.supports) &&
                   number("supportAngle", "Overhang angle", 15, 85, 1, "°")}
-                {number("supportDensity", "Density", 5, 80, 1, " %")}
+                {number(
+                  "supportDensity",
+                  "Support body density",
+                  5,
+                  80,
+                  1,
+                  " %",
+                )}
               </div>
+              <div className="field-pair">
+                {number(
+                  "supportTopInterfaceLayers",
+                  "Top interface layers",
+                  0,
+                  10,
+                )}
+                {number(
+                  "supportBottomInterfaceLayers",
+                  "Bottom interface layers",
+                  0,
+                  10,
+                )}
+              </div>
+              <Text size="xs" c="dimmed">
+                Top interfaces sit beneath the model. Bottom interfaces sit
+                above model surfaces where supports land. Zero disables that
+                interface. Both use the support filament and preserve the
+                contact gap.
+              </Text>
+              {(supportInterfaceSettings(s).supportTopInterfaceLayers > 0 ||
+                supportInterfaceSettings(s).supportBottomInterfaceLayers >
+                  0) && (
+                <div className="field-pair">
+                  {number(
+                    "supportInterfaceDensity",
+                    "Interface density",
+                    5,
+                    100,
+                    1,
+                    " %",
+                  )}
+                  {number(
+                    "supportInterfaceAngle",
+                    "Interface angle",
+                    0,
+                    180,
+                    1,
+                    "°",
+                  )}
+                </div>
+              )}
               {advanced &&
                 number("supportOffset", "XY separation", 0.1, 3, 0.1, " mm")}
             </>

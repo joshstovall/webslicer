@@ -210,7 +210,9 @@ window.addEventListener("message", async (e) => {
             stage:
               message === "branching supports"
                 ? "Growing tree supports"
-                : "Planning toolpaths",
+                : message === "support interfaces"
+                  ? "Filling support interfaces"
+                  : "Planning toolpaths",
           }),
         (result) =>
           result?.error ? reject(new Error(result.error)) : resolve(),

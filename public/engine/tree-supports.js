@@ -140,10 +140,7 @@ function treeBoundaryTarget(center, obstacles, margin, wantInside) {
  * Each global section is assigned to one real slice, preventing duplicate
  * support walls or fill when branches from different materials meet.
  */
-export async function planPlateTrees(widgets, process, api, device, progress) {
-  if (!process.sliceSupportTree) return;
-  if (device.bedBelt)
-    throw new Error("Tree supports are not available for belt printers.");
+export function collectSupportLayers(widgets, process, api, device) {
   const byIndex = new Map();
   for (const widget of widgets)
     for (const slice of widget.slices) {
@@ -163,7 +160,7 @@ export async function planPlateTrees(widgets, process, api, device, progress) {
       }
       if (Math.abs(layer.z - slice.z) > 0.001)
         throw new Error(
-          "Tree supports require a shared layer grid across parts.",
+          "Support planning requires a shared layer grid across parts.",
         );
       const pos = widget.track.pos;
       const shifted = (polys) =>
@@ -197,6 +194,14 @@ export async function planPlateTrees(widgets, process, api, device, progress) {
     layer.up = layers[i + 1];
     layer.down = layers[i - 1];
   }
+  return layers;
+}
+
+export async function planPlateTrees(widgets, process, api, device, progress) {
+  if (!process.sliceSupportTree) return;
+  if (device.bedBelt)
+    throw new Error("Tree supports are not available for belt printers.");
+  const layers = collectSupportLayers(widgets, process, api, device);
   const stats = await applyTreeSupports(
     layers,
     { ...process, stratumTreeBed: [device.bedWidth, device.bedDepth] },

@@ -13,7 +13,7 @@
     {
       "path": "public/engine/kiri-work.js",
       "url": "https://grid.space/lib/pack/kiri-work.js",
-      "sha256": "b8888ec4281041407b1646b3fc5cd30005b0b92f30e59e2eef7edde497b7660e",
+      "sha256": "eacaee1f3051e781714e61692f611a297125664ed599ca569cbe99f40271d2a3",
       "modified": true
     },
     {
@@ -42,7 +42,7 @@
     },
     {
       "path": "public/engine/bridge.js",
-      "sha256": "9a6da7db6d98a5a84910bd00cc018b255515450092f6dc29e1ae2d3a1a443ac1"
+      "sha256": "6d28596eb226ad1318601df1d37d900b458626fa03e6c6e33d18d1f72af466a0"
     },
     {
       "path": "public/engine/bridge-cooling.js",
@@ -78,7 +78,11 @@
     },
     {
       "path": "public/engine/tree-supports.js",
-      "sha256": "a587aa0a7d26ff73567d55be84cf8c066f862f86a6893efe7abb84d7ba14c236"
+      "sha256": "2418c5a2a66830c0bbbe217065310b8ae4abda3467d4f9b2faa794202d8934a1"
+    },
+    {
+      "path": "public/engine/support-interfaces.js",
+      "sha256": "ebaf2e85f03bff02108c3bdacc149cf0e2723870115579f5f6f660f2f23998bb"
     }
   ]
 }
