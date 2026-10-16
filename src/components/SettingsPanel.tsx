@@ -1,3 +1,4 @@
+import { vendorNozzleLimits } from "../lib/nozzle-profiles";
 import {
   Accordion,
   Button,
@@ -50,6 +51,7 @@ export function SettingsPanel({
   disabled,
 }: Props) {
   const limits = thermalLimits(printer);
+  const layerLimits = vendorNozzleLimits(printer);
   const [advanced, setAdvanced] = useState(false),
     [query, setQuery] = useState("");
   function number(
@@ -141,16 +143,16 @@ export function SettingsPanel({
             {number(
               "layerHeight",
               "Layer height",
-              0.04,
-              printer.nozzle * 0.8,
+              layerLimits?.min ?? 0.04,
+              layerLimits?.max ?? printer.nozzle * 0.8,
               0.01,
               " mm",
             )}
             {number(
               "firstLayerHeight",
               "First layer",
-              0.04,
-              printer.nozzle,
+              layerLimits?.min ?? 0.04,
+              layerLimits?.max ?? printer.nozzle,
               0.01,
               " mm",
             )}
@@ -174,7 +176,7 @@ export function SettingsPanel({
                 number(
                   "minLayerHeight",
                   "Minimum layer height",
-                  0.04,
+                  layerLimits?.min ?? 0.04,
                   s.layerHeight,
                   0.01,
                   " mm",
@@ -505,10 +507,10 @@ export function SettingsPanel({
         value={String(s.layerHeight)}
         onChange={(v) => onChange({ layerHeight: Number(v) })}
         data={QUALITY.map((q) => ({
-          value: String(q.value),
+          value: String(Number(((q.value * printer.nozzle) / 0.4).toFixed(3))),
           label: (
             <div>
-              <strong>{q.value.toFixed(2)}</strong>
+              <strong>{((q.value * printer.nozzle) / 0.4).toFixed(2)}</strong>
               <span>{q.name}</span>
             </div>
           ),

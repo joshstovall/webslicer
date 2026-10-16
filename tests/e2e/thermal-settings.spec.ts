@@ -40,6 +40,11 @@ test("X1C supply voltage persists on phones and changes the allowed bed target",
     .click();
   await page.getByRole("option", { name: "110 V", exact: true }).click();
   await page.getByRole("button", { name: "Save printer", exact: true }).click();
+  // Saving can fetch uncached machine sequences; wait for the transaction
+  // to finish before closing the underlying drawer or reloading the page.
+  await expect(
+    page.getByRole("dialog", { name: "Printer configuration" }),
+  ).not.toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".saved-indicator")).toContainText("Saved");
   await page.reload();
@@ -59,6 +64,11 @@ test("X1C supply voltage persists on phones and changes the allowed bed target",
     .click();
   await page.getByRole("option", { name: "220 V", exact: true }).click();
   await page.getByRole("button", { name: "Save printer", exact: true }).click();
+  // Saving can fetch uncached machine sequences; wait for the transaction
+  // to finish before closing the underlying drawer or reloading the page.
+  await expect(
+    page.getByRole("dialog", { name: "Printer configuration" }),
+  ).not.toBeVisible();
   await expect(bed).toHaveAttribute("aria-invalid", "true");
   await expect(bed).toHaveValue("115 °C");
 });

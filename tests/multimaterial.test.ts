@@ -151,6 +151,7 @@ it("directional purge volumes remain asymmetric, exclude unused slots, and compi
   expect(maximumPurgeVolume(multi, [1])).toBe(0);
   const machine = {
     ...printer,
+    id: "bambu-p1s",
     firmware: "bambu" as const,
     startGcode: "G90\nM83",
     endGcode: "M104 S0",

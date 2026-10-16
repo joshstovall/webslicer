@@ -1,3 +1,4 @@
+import { applyPrinter, VENDOR_NOZZLES } from "./lib/nozzle-profiles";
 import { PrinterHardware } from "./components/PrinterHardware";
 import { readGcodeMetadata } from "./lib/gcode-metadata";
 import {
@@ -1019,7 +1020,7 @@ function App() {
         setLoadingPrinter(true);
         try {
           const loaded = await loadVendorPrinter(printer);
-          commit((p) => ({ ...p, printer: loaded }));
+          commit((p) => applyPrinter(p, loaded));
         } catch (error) {
           notify((error as Error).message, "red");
         } finally {
@@ -2394,227 +2395,278 @@ function App() {
       </Modal>
       <Modal
         opened={modal === "printer"}
-        onClose={() => setModal(null)}
+        onClose={() => !loadingPrinter && setModal(null)}
+        withCloseButton={!loadingPrinter}
+        closeOnEscape={!loadingPrinter}
+        closeOnClickOutside={!loadingPrinter}
         title="Printer configuration"
         size="lg"
       >
         <Stack gap="md">
-          <Alert color="gray" title="Machine-specific setup">
-            {printerDraft.firmware ? (
-              <>
-                This profile uses the manufacturer's machine sequences.{" "}
-                <a
-                  href={printerDraft.profileSource}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  View official profile source
-                </a>
-                . The included profile is for a 0.4 mm nozzle.
-              </>
-            ) : (
-              <>
-                Set the build volume, tool system, and G-code sequences for your
-                machine.
-              </>
-            )}
-          </Alert>
-          <TextInput
-            label="Printer name"
-            value={printerDraft.name}
-            onChange={(e) =>
-              setPrinterDraft((p) => ({
-                ...p,
-                name: e.target.value,
-                id: p.firmware ? p.id : "generic",
-              }))
-            }
-          />
-          {printerDraft.id === "bambu-x1c" && (
-            <Select
-              label="X1 Carbon mains supply"
-              description="Maximum bed temperature: 120°C on 110 V; 110°C on 220 V."
-              data={[
-                { value: "unknown", label: "Unspecified (110°C bed limit)" },
-                { value: "110", label: "110 V" },
-                { value: "220", label: "220 V" },
-              ]}
-              value={String(printerDraft.mainsVoltage ?? "unknown")}
-              allowDeselect={false}
-              onChange={(v) =>
+          <fieldset
+            disabled={loadingPrinter}
+            style={{
+              border: 0,
+              padding: 0,
+              margin: 0,
+              minWidth: 0,
+              display: "contents",
+            }}
+          >
+            <Alert color="gray" title="Machine-specific setup">
+              {printerDraft.firmware ? (
+                <>
+                  This profile uses the manufacturer's machine sequences.{" "}
+                  <a
+                    href={printerDraft.profileSource}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View official profile source
+                  </a>
+                  . Changing the nozzle loads its official machine sequences
+                  when you save.
+                  {printerDraft.firmware === "snapmaker-u1" &&
+                    " All four U1 heads must use the same diameter."}
+                </>
+              ) : (
+                <>
+                  Set the build volume, tool system, and G-code sequences for
+                  your machine.
+                </>
+              )}
+            </Alert>
+            <TextInput
+              label="Printer name"
+              value={printerDraft.name}
+              onChange={(e) =>
                 setPrinterDraft((p) => ({
                   ...p,
-                  mainsVoltage:
-                    v === "110" ? 110 : v === "220" ? 220 : undefined,
+                  name: e.target.value,
+                  id: p.firmware ? p.id : "generic",
                 }))
               }
             />
-          )}
-          <div className="three-fields">
-            {["Build width (X)", "Build depth (Y)", "Build height (Z)"].map(
-              (label, i) => (
-                <NumberInput
-                  key={label}
-                  label={label}
-                  value={printerDraft.bed[i]}
-                  min={20}
-                  max={2000}
-                  suffix=" mm"
-                  onChange={(v) => {
-                    if (typeof v === "number" && v >= 20 && v <= 2000)
-                      setPrinterDraft((p) => ({
-                        ...p,
-                        bed: p.bed.map((n, j) => (j === i ? v : n)) as Vec3,
-                      }));
-                  }}
-                />
-              ),
-            )}
-          </div>
-          <div className="field-pair">
-            <Select
-              label="Nozzle diameter"
-              disabled={Boolean(printerDraft.firmware)}
-              value={String(printerDraft.nozzle)}
-              data={["0.2", "0.25", "0.4", "0.6", "0.8", "1"]}
-              onChange={(v) =>
-                v && setPrinterDraft((p) => ({ ...p, nozzle: Number(v) }))
-              }
-            />
-            <Select
-              label="Filament diameter"
-              value={String(printerDraft.filament)}
-              data={["1.75", "2.85"]}
-              onChange={(v) =>
-                v && setPrinterDraft((p) => ({ ...p, filament: Number(v) }))
-              }
-            />
-          </div>
-          <div className="field-pair">
-            <Select
-              label="Tool system"
-              value={printerDraft.multiMaterialMode ?? "single"}
-              disabled={Boolean(printerDraft.firmware)}
-              allowDeselect={false}
-              data={[
-                { value: "single", label: "Single filament" },
-                {
-                  value: "shared-nozzle",
-                  label: "Shared nozzle / color changer",
-                },
-                { value: "toolchanger", label: "Independent toolheads" },
-              ]}
-              onChange={(v) =>
-                v &&
-                setPrinterDraft((p) => ({
-                  ...p,
-                  multiMaterialMode: v as PrinterType["multiMaterialMode"],
-                  toolCount: v === "single" ? 1 : Math.max(2, p.toolCount ?? 4),
-                  hardware: {
-                    ...p.hardware,
-                    abrasiveTools: p.hardware?.abrasiveTools?.filter(
-                      (t) => v === "toolchanger" || t === 0,
-                    ),
-                  },
-                }))
-              }
-            />
-            <NumberInput
-              label="Filament slots"
-              value={printerDraft.toolCount ?? 1}
-              min={1}
-              max={64}
-              allowDecimal={false}
-              disabled={
-                Boolean(printerDraft.firmware) ||
-                (printerDraft.multiMaterialMode ?? "single") === "single"
-              }
-              onChange={(v) =>
-                typeof v === "number" &&
-                v >= 1 &&
-                v <= 64 &&
-                setPrinterDraft((p) => ({
-                  ...p,
-                  toolCount: v,
-                  hardware: {
-                    ...p.hardware,
-                    abrasiveTools: p.hardware?.abrasiveTools?.filter(
-                      (t) => t < v,
-                    ),
-                  },
-                }))
-              }
-            />
-          </div>
-          <PrinterHardware printer={printerDraft} onChange={setPrinterDraft} />
-          <Tabs defaultValue="start">
-            <Tabs.List>
-              <Tabs.Tab value="start">Start G-code</Tabs.Tab>
-              <Tabs.Tab value="end">End G-code</Tabs.Tab>
-              <Tabs.Tab value="change">Tool-change G-code</Tabs.Tab>
-            </Tabs.List>
-            <Tabs.Panel value="start" pt="sm">
-              <Textarea
-                aria-label="Start G-code"
-                autosize
-                minRows={7}
-                maxRows={14}
-                className="code-input"
-                value={printerDraft.startGcode}
-                onChange={(e) =>
-                  setPrinterDraft((p) => ({ ...p, startGcode: e.target.value }))
-                }
-              />
-            </Tabs.Panel>
-            <Tabs.Panel value="end" pt="sm">
-              <Textarea
-                aria-label="End G-code"
-                autosize
-                minRows={7}
-                maxRows={14}
-                className="code-input"
-                value={printerDraft.endGcode}
-                onChange={(e) =>
-                  setPrinterDraft((p) => ({ ...p, endGcode: e.target.value }))
-                }
-              />
-            </Tabs.Panel>
-            <Tabs.Panel value="change" pt="sm">
-              <Textarea
-                aria-label="Tool-change G-code"
-                autosize
-                minRows={7}
-                maxRows={14}
-                className="code-input"
-                readOnly={printerDraft.firmware === "snapmaker-u1"}
-                value={printerDraft.toolChangeGcode ?? "T{tool}"}
-                onChange={(e) =>
+            {printerDraft.id === "bambu-x1c" && (
+              <Select
+                label="X1 Carbon mains supply"
+                description="Maximum bed temperature: 120°C on 110 V; 110°C on 220 V."
+                data={[
+                  { value: "unknown", label: "Unspecified (110°C bed limit)" },
+                  { value: "110", label: "110 V" },
+                  { value: "220", label: "220 V" },
+                ]}
+                value={String(printerDraft.mainsVoltage ?? "unknown")}
+                allowDeselect={false}
+                onChange={(v) =>
                   setPrinterDraft((p) => ({
                     ...p,
-                    toolChangeGcode: e.currentTarget.value,
+                    mainsVoltage:
+                      v === "110" ? 110 : v === "220" ? 220 : undefined,
                   }))
                 }
               />
-            </Tabs.Panel>
-          </Tabs>
-          <Text size="xs" c="dimmed">
-            Available placeholders: {"{temp}"}, {"{bed_temp}"}, {"{tool}"}.
-            Output uses absolute XYZ. Multi-filament output uses relative
-            extrusion.
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setModal(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                commit((p) => ({ ...p, printer: printerDraft }));
-                setModal(null);
-              }}
-            >
-              Save printer
-            </Button>
-          </Group>
+            )}
+            <div className="three-fields">
+              {["Build width (X)", "Build depth (Y)", "Build height (Z)"].map(
+                (label, i) => (
+                  <NumberInput
+                    key={label}
+                    label={label}
+                    value={printerDraft.bed[i]}
+                    min={20}
+                    max={2000}
+                    suffix=" mm"
+                    onChange={(v) => {
+                      if (typeof v === "number" && v >= 20 && v <= 2000)
+                        setPrinterDraft((p) => ({
+                          ...p,
+                          bed: p.bed.map((n, j) => (j === i ? v : n)) as Vec3,
+                        }));
+                    }}
+                  />
+                ),
+              )}
+            </div>
+            <div className="field-pair">
+              <Select
+                label="Nozzle diameter"
+                allowDeselect={false}
+                value={String(printerDraft.nozzle)}
+                data={
+                  printerDraft.firmware
+                    ? VENDOR_NOZZLES.map(String)
+                    : ["0.2", "0.25", "0.4", "0.6", "0.8", "1"]
+                }
+                description="Changing diameter resets layer heights, line width, support spacing and vendor retraction."
+                onChange={(v) =>
+                  v && setPrinterDraft((p) => ({ ...p, nozzle: Number(v) }))
+                }
+              />
+              <Select
+                label="Filament diameter"
+                value={String(printerDraft.filament)}
+                allowDeselect={false}
+                data={printerDraft.firmware ? ["1.75"] : ["1.75", "2.85"]}
+                onChange={(v) =>
+                  v && setPrinterDraft((p) => ({ ...p, filament: Number(v) }))
+                }
+              />
+            </div>
+            <div className="field-pair">
+              <Select
+                label="Tool system"
+                value={printerDraft.multiMaterialMode ?? "single"}
+                disabled={Boolean(printerDraft.firmware)}
+                allowDeselect={false}
+                data={[
+                  { value: "single", label: "Single filament" },
+                  {
+                    value: "shared-nozzle",
+                    label: "Shared nozzle / color changer",
+                  },
+                  { value: "toolchanger", label: "Independent toolheads" },
+                ]}
+                onChange={(v) =>
+                  v &&
+                  setPrinterDraft((p) => ({
+                    ...p,
+                    multiMaterialMode: v as PrinterType["multiMaterialMode"],
+                    toolCount:
+                      v === "single" ? 1 : Math.max(2, p.toolCount ?? 4),
+                    hardware: {
+                      ...p.hardware,
+                      abrasiveTools: p.hardware?.abrasiveTools?.filter(
+                        (t) => v === "toolchanger" || t === 0,
+                      ),
+                    },
+                  }))
+                }
+              />
+              <NumberInput
+                label="Filament slots"
+                value={printerDraft.toolCount ?? 1}
+                min={1}
+                max={64}
+                allowDecimal={false}
+                disabled={
+                  Boolean(printerDraft.firmware) ||
+                  (printerDraft.multiMaterialMode ?? "single") === "single"
+                }
+                onChange={(v) =>
+                  typeof v === "number" &&
+                  v >= 1 &&
+                  v <= 64 &&
+                  setPrinterDraft((p) => ({
+                    ...p,
+                    toolCount: v,
+                    hardware: {
+                      ...p.hardware,
+                      abrasiveTools: p.hardware?.abrasiveTools?.filter(
+                        (t) => t < v,
+                      ),
+                    },
+                  }))
+                }
+              />
+            </div>
+            <PrinterHardware
+              printer={printerDraft}
+              onChange={setPrinterDraft}
+            />
+            <Tabs defaultValue="start">
+              <Tabs.List>
+                <Tabs.Tab value="start">Start G-code</Tabs.Tab>
+                <Tabs.Tab value="end">End G-code</Tabs.Tab>
+                <Tabs.Tab value="change">Tool-change G-code</Tabs.Tab>
+              </Tabs.List>
+              <Tabs.Panel value="start" pt="sm">
+                <Textarea
+                  aria-label="Start G-code"
+                  disabled={
+                    Boolean(printerDraft.firmware) &&
+                    (printerDraft.profileNozzle ?? 0.4) !== printerDraft.nozzle
+                  }
+                  autosize
+                  minRows={7}
+                  maxRows={14}
+                  className="code-input"
+                  value={printerDraft.startGcode}
+                  onChange={(e) =>
+                    setPrinterDraft((p) => ({
+                      ...p,
+                      startGcode: e.target.value,
+                    }))
+                  }
+                />
+              </Tabs.Panel>
+              <Tabs.Panel value="end" pt="sm">
+                <Textarea
+                  aria-label="End G-code"
+                  disabled={
+                    Boolean(printerDraft.firmware) &&
+                    (printerDraft.profileNozzle ?? 0.4) !== printerDraft.nozzle
+                  }
+                  autosize
+                  minRows={7}
+                  maxRows={14}
+                  className="code-input"
+                  value={printerDraft.endGcode}
+                  onChange={(e) =>
+                    setPrinterDraft((p) => ({ ...p, endGcode: e.target.value }))
+                  }
+                />
+              </Tabs.Panel>
+              <Tabs.Panel value="change" pt="sm">
+                <Textarea
+                  aria-label="Tool-change G-code"
+                  disabled={
+                    Boolean(printerDraft.firmware) &&
+                    (printerDraft.profileNozzle ?? 0.4) !== printerDraft.nozzle
+                  }
+                  autosize
+                  minRows={7}
+                  maxRows={14}
+                  className="code-input"
+                  readOnly={printerDraft.firmware === "snapmaker-u1"}
+                  value={printerDraft.toolChangeGcode ?? "T{tool}"}
+                  onChange={(e) =>
+                    setPrinterDraft((p) => ({
+                      ...p,
+                      toolChangeGcode: e.currentTarget.value,
+                    }))
+                  }
+                />
+              </Tabs.Panel>
+            </Tabs>
+            <Text size="xs" c="dimmed">
+              Available placeholders: {"{temp}"}, {"{bed_temp}"}, {"{tool}"}.
+              Output uses absolute XYZ. Multi-filament output uses relative
+              extrusion.
+            </Text>
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                loading={loadingPrinter}
+                onClick={async () => {
+                  setLoadingPrinter(true);
+                  try {
+                    const loaded = await loadVendorPrinter(printerDraft);
+                    commit((p) => applyPrinter(p, loaded));
+                    setModal(null);
+                  } catch (error) {
+                    notify((error as Error).message, "red");
+                  } finally {
+                    setLoadingPrinter(false);
+                  }
+                }}
+              >
+                Save printer
+              </Button>
+            </Group>
+          </fieldset>
         </Stack>
       </Modal>
       <Modal

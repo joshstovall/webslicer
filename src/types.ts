@@ -75,6 +75,8 @@ export interface Printer {
   profileSource?: string;
   firmware?: "bambu" | "snapmaker-u1";
   profileRevision?: string;
+  /** Diameter associated with the stored machine sequences; legacy profiles imply 0.4 mm. */
+  profileNozzle?: number;
   bedOrigin?: [number, number];
   bedType?: string;
   mainsVoltage?: 110 | 220;

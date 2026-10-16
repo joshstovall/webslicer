@@ -1,3 +1,4 @@
+import { nozzleProfileErrors } from "./nozzle-profiles";
 import { materialCompatibility } from "./material-compatibility";
 import type {
   Filament,
@@ -131,7 +132,7 @@ export function materialErrors(
   settings: Settings,
   multi: MultiMaterialSettings,
 ): string[] {
-  const errors: string[] = [];
+  const errors: string[] = nozzleProfileErrors(printer, settings);
   if (!Number.isFinite(settings.flow) || settings.flow <= 0)
     errors.push("Process flow ratio must be positive.");
   const capacity = printer.toolCount ?? 1;

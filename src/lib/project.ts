@@ -117,6 +117,11 @@ export function validateProject(p: unknown): Project {
     !(v.printer.filament > 0)
   )
     throw new Error("Invalid printer dimensions.");
+  if (
+    v.printer.profileNozzle !== undefined &&
+    ![0.2, 0.4, 0.6, 0.8].includes(v.printer.profileNozzle)
+  )
+    throw new Error("Invalid official nozzle profile metadata.");
   if (!validPrinterHardware(v.printer))
     throw new Error("Invalid printer hardware configuration.");
   for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {

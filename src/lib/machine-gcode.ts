@@ -1,3 +1,4 @@
+import { nozzleProfileErrors } from "./nozzle-profiles";
 import { finalizeFanShutdown } from "./fan-control";
 import type {
   Filament,
@@ -19,6 +20,8 @@ export function compileMachineGcode(
 ): string {
   gcode = finalizeFanShutdown(gcode);
   if (!printer.firmware) return gcode;
+  const nozzleErrors = nozzleProfileErrors(printer, settings);
+  if (nozzleErrors.length) throw new Error(nozzleErrors.join("\n"));
   if (!printer.startGcode || !printer.endGcode || !printer.toolChangeGcode)
     throw new Error("Load the official machine profile before slicing.");
   const initial = Number(gcode.match(/;STRATUM_INITIAL_TOOL:(\d+)/)?.[1] ?? 0);

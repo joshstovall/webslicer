@@ -33,7 +33,11 @@ it("exports a self-consistent Bambu print archive with machine and filament meta
     version: 1,
     name: "A & B",
     models: [],
-    printer: VENDOR_PRINTERS[1],
+    printer: {
+      ...VENDOR_PRINTERS[1],
+      name: "My workshop printer",
+      nozzle: 0.6,
+    },
     settings: DEFAULT_SETTINGS,
     filaments,
     plates: [1],
@@ -55,6 +59,14 @@ it("exports a self-consistent Bambu print archive with machine and filament meta
   expect(info).toContain('key="printer_model_id" value="C12"');
   expect(info).toContain('<filament id="3"');
   expect(info).not.toContain('<filament id="2"');
+  expect(
+    JSON.parse(strFromU8(files["Metadata/project_settings.config"])),
+  ).toMatchObject({
+    printer_model: "Bambu Lab P1S",
+    printer_settings_id: "Bambu Lab P1S 0.6 nozzle",
+    nozzle_diameter: ["0.6"],
+  });
+  expect(readPrintPackage(bytes)?.printer?.nozzle).toBe(0.6);
   expect(readPrintPackage(bytes)?.gcode).toBe(result.gcode);
   expect(readPrintPackage(bytes)?.filaments?.map((f) => f.color)).toEqual(
     filaments.map((f) => f.color),

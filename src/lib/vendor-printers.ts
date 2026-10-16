@@ -1,3 +1,4 @@
+import { vendorNozzleLimits } from "./nozzle-profiles";
 import type { Printer } from "../types";
 import { get, set } from "idb-keyval";
 const BAMBU_REVISION = "79df7ae309be398ed30c9f397c13c9911c2edc57";
@@ -66,17 +67,45 @@ function validTemplates(value: unknown): value is Templates {
     })
   );
 }
+async function storedTemplates(key: string): Promise<unknown> {
+  try {
+    return await get(key);
+  } catch {
+    return undefined;
+  }
+}
 /** Cache pinned templates separately from editable printer dimensions/settings. */
 export async function loadVendorPrinter(printer: Printer): Promise<Printer> {
-  if (!printer.firmware || validTemplates(printer)) return printer;
+  if (!printer.firmware) return printer;
+  if (!vendorNozzleLimits(printer))
+    throw new Error("Unsupported official nozzle profile.");
+  if (
+    validTemplates(printer) &&
+    (printer.profileNozzle ?? 0.4) === printer.nozzle
+  )
+    return { ...printer, profileNozzle: printer.nozzle };
   const preset = VENDOR_PRINTERS.find(
     (p) => p.id === printer.id && p.firmware === printer.firmware,
   );
   if (!preset) throw new Error("Unknown official printer profile.");
   const revision =
     printer.firmware === "bambu" ? BAMBU_REVISION : SNAPMAKER_REVISION;
-  const key = `vendor-templates:v1:${printer.firmware}:${printer.id}:${revision}`;
-  const saved = cache.get(key) ?? (await get(key).catch(() => undefined));
+  const modelName =
+    printer.firmware === "bambu"
+      ? `Bambu Lab ${names[printer.id]} ${printer.nozzle} nozzle`
+      : `Snapmaker U1 (${printer.nozzle} nozzle)`;
+  const repository =
+    printer.firmware === "bambu"
+      ? "bambulab/BambuStudio"
+      : "Snapmaker/OrcaSlicer";
+  const directory = printer.firmware === "bambu" ? "BBL" : "Snapmaker";
+  const source = `https://github.com/${repository}/blob/${revision}/resources/profiles/${directory}/machine/${encodeURIComponent(modelName + ".json")}`;
+  const key = `vendor-templates:v2:${printer.firmware}:${printer.id}:${revision}:${printer.nozzle}`;
+  let saved = cache.get(key) ?? (await storedTemplates(key));
+  if (!saved && printer.nozzle === 0.4)
+    saved = await storedTemplates(
+      `vendor-templates:v1:${printer.firmware}:${printer.id}:${revision}`,
+    );
   if (validTemplates(saved)) {
     const templates = {
       startGcode: saved.startGcode,
@@ -88,7 +117,8 @@ export async function loadVendorPrinter(printer: Printer): Promise<Printer> {
       ...printer,
       ...templates,
       profileRevision: revision,
-      profileSource: preset.profileSource,
+      profileSource: source,
+      profileNozzle: printer.nozzle,
     };
   }
   const json = async (url: string) => {
@@ -107,27 +137,47 @@ export async function loadVendorPrinter(printer: Printer): Promise<Printer> {
   const loaded = {
     ...printer,
     profileRevision: revision,
-    profileSource: preset.profileSource,
+    profileSource: source,
+    profileNozzle: printer.nozzle,
   };
-  if (printer.firmware === "bambu") {
-    const model = names[printer.id];
-    if (!model) throw new Error("Unknown Bambu profile.");
-    const sources = await Promise.all(
-      keys.map((key) =>
-        json(
-          `https://raw.githubusercontent.com/bambulab/BambuStudio/${BAMBU_REVISION}/resources/profiles/BBL/machine/${encodeURIComponent(`Bambu Lab ${model} 0.4 nozzle template ${key}.json`)}`,
-        ),
-      ),
+  const rawBase = `https://raw.githubusercontent.com/${repository}/${revision}/resources/profiles/${directory}/machine/`;
+  const read = (name: string) =>
+    json(rawBase + encodeURIComponent(name + ".json"));
+  const root = await read(modelName);
+  if (
+    !Array.isArray(root.nozzle_diameter) ||
+    !root.nozzle_diameter.length ||
+    !root.nozzle_diameter.every((n: string) => Number(n) === printer.nozzle)
+  )
+    throw new Error(
+      "Official profile nozzle diameter does not match the requested nozzle.",
     );
-    keys.forEach((key, i) => {
-      loaded[fields[i]] = sources[i][key];
+  if (printer.firmware === "bambu") {
+    const base =
+      printer.nozzle === 0.4
+        ? root
+        : await read(`Bambu Lab ${names[printer.id]} 0.4 nozzle`);
+    const templates = await Promise.all(
+      keys.map(async (key) => {
+        const suffix = ` template ${key}`;
+        const include =
+          (root.include ?? []).find((n: string) => n.endsWith(suffix)) ??
+          (base.include ?? []).find((n: string) => n.endsWith(suffix));
+        if (
+          typeof include !== "string" ||
+          !include.startsWith(`Bambu Lab ${names[printer.id]} `) ||
+          /[/\\]/.test(include)
+        )
+          throw new Error(`Official profile is missing ${key}.`);
+        return (await read(include))[key];
+      }),
+    );
+    keys.forEach((_, i) => {
+      loaded[fields[i]] = templates[i];
     });
   } else {
-    const source = await json(
-      `https://raw.githubusercontent.com/Snapmaker/OrcaSlicer/${SNAPMAKER_REVISION}/resources/profiles/Snapmaker/machine/${encodeURIComponent("Snapmaker U1 (0.4 nozzle).json")}`,
-    );
     keys.forEach((key, i) => {
-      loaded[fields[i]] = source[key];
+      loaded[fields[i]] = root[key];
     });
   }
   for (const field of fields) {
@@ -146,6 +196,10 @@ export async function loadVendorPrinter(printer: Printer): Promise<Printer> {
   cache.set(key, templates);
   // Storage may be disabled/full. A successful online selection still works;
   // saving the project also retains these templates in its portable payload.
-  await set(key, templates).catch(() => {});
+  try {
+    await set(key, templates);
+  } catch {
+    /* Optional offline cache. */
+  }
   return structuredClone(loaded);
 }

@@ -1,6 +1,7 @@
 import { zipSync, strToU8 } from "fflate";
 import type { Project, SliceResult, Printer } from "../types";
 import { defaultFilament } from "./multimaterial";
+import { VENDOR_PRINTERS } from "./vendor-printers";
 
 import { md5 } from "./md5";
 export { md5 } from "./md5";
@@ -36,6 +37,9 @@ export function createPrintPackage(
     throw new Error(
       "Select a supported Bambu printer for a Bambu print package.",
     );
+  const modelName = VENDOR_PRINTERS.find(
+    (p) => p.id === printer.id,
+  )!.name.replace(" + AMS", "");
   const meta = (key: string, value: unknown) =>
     `<metadata key="${key}" value="${xml(value)}"/>`;
   const gcode = strToU8(result.gcode);
@@ -70,8 +74,8 @@ export function createPrintPackage(
   text(
     "Metadata/project_settings.config",
     JSON.stringify({
-      printer_model: printer.name.replace(" + AMS", ""),
-      printer_settings_id: printer.name,
+      printer_model: modelName,
+      printer_settings_id: `${modelName} ${printer.nozzle} nozzle`,
       nozzle_diameter: [String(printer.nozzle)],
       filament_colour: filaments.map((f) => f.color),
       filament_type: filaments.map((f) => f.material),
