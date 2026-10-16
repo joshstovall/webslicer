@@ -16,7 +16,7 @@ Model imports, starter creation and cuts use the same outline search automatical
 
 During automatic placement, cancellation discards the staged operation and preserves the existing project. Cancelling an import stops the remaining file batch; files already committed remain. If the search fails, its dialog offers **Retry placement** with edited preferences, **Cancel operation**, or **Keep without arranging** for manual correction. Keeping is an explicit choice and still supports undo; it does not bypass pre-slice geometry and bounds checks. Cancelling a cut during placement also rolls back the completed cut geometry.
 
-Support-aware orientation and outline-aware purge-tower placement remain in the broader goal. Arrange considers model footprints, not future support envelopes, printer-head clearance for sequential printing, or a fixed manual purge tower. The slicing pipeline continues to validate generated supports/towers and physical output bounds.
+Support-aware orientation has its own candidate review and apply-and-arrange workflow; see `orientation.md`. Outline-aware purge-tower placement remains in the broader goal. Arrange considers model footprints, not future support envelopes, printer-head clearance for sequential printing, or a fixed manual purge tower. The slicing pipeline continues to validate generated supports/towers and physical output bounds.
 
 ## Before slicing
 

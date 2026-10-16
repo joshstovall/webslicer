@@ -1,3 +1,6 @@
+import { OrientationDialog } from "./components/OrientationDialog";
+import { applyOrientation } from "./lib/orientation";
+import type { OrientationCandidate } from "./lib/orientation-core";
 import {
   loadArrangePreferences,
   saveArrangePreferences,
@@ -235,6 +238,11 @@ function App() {
     [importing, setImporting] = useState(false),
     [loadingPrinter, setLoadingPrinter] = useState(false);
   const [arranging, setArranging] = useState(false);
+  const [orientation, setOrientation] = useState<{
+    snapshot: Project;
+    parts: Model[];
+    controller: AbortController;
+  } | null>(null);
   const [arrangeOptions, setArrangeOptions] = useState<ArrangeOptions>(
     loadArrangePreferences,
   );
@@ -551,6 +559,85 @@ function App() {
     setSelected(
       copies.find((m) => m.name === `${model.name} copy`)?.id ?? copies[0].id,
     );
+  }
+  function closeOrientation(controller = orientation?.controller) {
+    if (!controller) return;
+    if (!controller.signal.aborted) controller.abort();
+    if (abortRef.current === controller) {
+      abortRef.current = null;
+      setBusy(false);
+    }
+    setOrientation((current) =>
+      current?.controller === controller ? null : current,
+    );
+  }
+  function startOrientation() {
+    if (!model || abortRef.current || importing) return;
+    const snapshot = projectRef.current;
+    const parts = transformWholeAssembly
+      ? assemblyParts(snapshot.models, model)
+      : [model];
+    if (!parts.some((m) => m.visible)) {
+      notify(
+        "Show a selected part before finding its printing orientation.",
+        "orange",
+      );
+      return;
+    }
+    notifications.clean();
+    const controller = new AbortController();
+    controller.signal.addEventListener(
+      "abort",
+      () => closeOrientation(controller),
+      { once: true },
+    );
+    abortRef.current = controller;
+    setBusy(true);
+    setStage("Review printing orientation");
+    setProgress(0);
+    setPreview(false);
+    setMobilePanel(null);
+    setModal(null);
+    setOrientation({ snapshot, parts, controller });
+  }
+  async function acceptOrientation(candidate: OrientationCandidate) {
+    if (!orientation) return;
+    const { snapshot, parts, controller } = orientation;
+    try {
+      const replacements = new Map(
+        applyOrientation(parts, candidate).map((m) => [m.id, m]),
+      );
+      const models = await placeAutomatically(
+        snapshot.models
+          .filter((m) => m.plate === snapshot.activePlate)
+          .map((m) => replacements.get(m.id) ?? m),
+        snapshot,
+        controller,
+        "Place oriented models",
+      );
+      if (controller.signal.aborted) return;
+      if (projectRef.current !== snapshot)
+        throw new Error(
+          "The project changed during orientation. Retry with the current plate.",
+        );
+      abortRef.current = null;
+      commit({
+        ...snapshot,
+        models: snapshot.models.map(
+          (m) => models.find((n) => n.id === m.id) ?? m,
+        ),
+      });
+      notify(
+        "Printing orientation applied. Slice to inspect the resulting supports and toolpaths.",
+      );
+    } catch (error) {
+      if ((error as Error).name !== "AbortError")
+        notify((error as Error).message, "red");
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setOrientation(null);
+      setBusy(false);
+    }
   }
   async function arrange() {
     if (abortRef.current || importing) return;
@@ -1734,6 +1821,13 @@ function App() {
                   Split connected parts
                 </Menu.Item>
                 <Menu.Item
+                  disabled={busy || importing}
+                  leftSection={<Rotate3D size={14} />}
+                  onClick={startOrientation}
+                >
+                  Find printing orientation
+                </Menu.Item>
+                <Menu.Item
                   disabled={busy}
                   onClick={() =>
                     updateModel(
@@ -2686,6 +2780,27 @@ function App() {
             if (arranging) abortRef.current?.abort();
             setModal(null);
           }}
+        />
+      )}
+      {orientation && !autoPlacement && (
+        <OrientationDialog
+          models={orientation.parts}
+          printer={orientation.snapshot.printer}
+          filamentColors={filamentColors}
+          angle={orientation.snapshot.settings.supportAngle}
+          edge={Math.max(
+            arrangeOptions.edge,
+            orientation.snapshot.settings.adhesion === "brim"
+              ? orientation.snapshot.settings.brimWidth
+              : orientation.snapshot.settings.adhesion === "skirt"
+                ? orientation.snapshot.settings.skirtDistance +
+                  orientation.snapshot.settings.skirtLoops *
+                    orientation.snapshot.settings.lineWidth
+                : 0,
+          )}
+          signal={orientation.controller.signal}
+          onCancel={() => closeOrientation()}
+          onApply={(candidate) => void acceptOrientation(candidate)}
         />
       )}
       {autoPlacement && (
