@@ -7,6 +7,7 @@ import {
   validPurgeOverrides,
 } from "./multimaterial";
 import { DEFAULT_SETTINGS, PRINTERS } from "./profiles";
+import { settingsForFilament } from "./material-settings";
 const KEY = "stratum-project-v1";
 export async function saveLocal(p: Project) {
   await set(KEY, p);
@@ -149,7 +150,7 @@ export function validateProject(p: unknown): Project {
     )
       throw new Error("Invalid painted surface depth.");
   }
-  const filaments = v.filaments ?? [defaultFilament(v.settings)];
+  let filaments = v.filaments ?? [defaultFilament(v.settings)];
   if (!Array.isArray(filaments) || !filaments.length || filaments.length > 64)
     throw new Error("Invalid filament list.");
   for (const f of filaments) {
@@ -166,13 +167,29 @@ export function validateProject(p: unknown): Project {
       ["density", 0.5, 3],
       ["cost", 0, 1000],
       ["flow", 0.5, 1.5],
-      ["maxFlow", 1, 50],
+      ["maxFlow", 1, 100],
       ["fan", 0, 100],
     ] as const) {
       if (!Number.isFinite(f[key]) || f[key] < min || f[key] > max)
         throw new Error(`Invalid filament ${key}.`);
     }
   }
+  filaments = filaments.map((f) => ({
+    ...f,
+    fanLayer: f.fanLayer ?? v.settings.fanLayer,
+  }));
+  if (
+    filaments.some(
+      (f) =>
+        !Number.isInteger(f.fanLayer) || f.fanLayer! < 1 || f.fanLayer! > 20,
+    )
+  )
+    throw new Error("Invalid filament fan start layer.");
+  if (
+    v.printer.mainsVoltage !== undefined &&
+    ![110, 220].includes(v.printer.mainsVoltage)
+  )
+    throw new Error("Invalid printer mains voltage.");
   for (const m of models)
     if (!Number.isInteger(m.tool) || m.tool < 0 || m.tool >= filaments.length)
       throw new Error("Invalid model filament assignment.");
@@ -205,6 +222,12 @@ export function validateProject(p: unknown): Project {
     name: String(v.name || "Untitled project"),
     models,
     printer: { ...PRINTERS[0], ...v.printer },
-    settings: { ...DEFAULT_SETTINGS, ...v.settings },
+    settings:
+      filaments.length === 1
+        ? settingsForFilament(
+            { ...DEFAULT_SETTINGS, ...v.settings },
+            filaments[0],
+          )
+        : { ...DEFAULT_SETTINGS, ...v.settings },
   };
 }

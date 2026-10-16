@@ -19,6 +19,7 @@ import type {
   Settings,
 } from "../types";
 import { defaultFilament, purgeVolumeFor } from "../lib/multimaterial";
+import { thermalLimits } from "../lib/thermal-limits";
 import { MATERIALS } from "../lib/profiles";
 interface Props {
   filaments: Filament[];
@@ -46,6 +47,7 @@ export function FilamentPanel({
       filaments.map((f, i) => (i === index ? { ...f, ...patch } : f)),
       multi,
     );
+  const maxTemperature = thermalLimits(printer)?.nozzle ?? 350;
   const capacity = printer.toolCount ?? 1;
   return (
     <Stack gap="md">
@@ -64,6 +66,10 @@ export function FilamentPanel({
           slots.
         </Alert>
       )}
+      <Text size="xs" c="dimmed">
+        Each filament has its own nozzle temperature, flow and part-cooling fan.
+        The bed temperature is shared; set it in Temperature &amp; cooling.
+      </Text>
       <Accordion multiple defaultValue={["0"]}>
         {filaments.map((f, i) => (
           <Accordion.Item value={String(i)} key={i}>
@@ -121,12 +127,17 @@ export function FilamentPanel({
                     label={`Filament ${i + 1} temperature`}
                     value={f.nozzleTemp}
                     min={150}
-                    max={350}
+                    max={maxTemperature}
+                    error={
+                      f.nozzleTemp > maxTemperature
+                        ? `Printer limit: ${maxTemperature}°C`
+                        : undefined
+                    }
                     suffix=" °C"
                     onChange={(v) =>
                       typeof v === "number" &&
                       v >= 150 &&
-                      v <= 350 &&
+                      v <= maxTemperature &&
                       update(i, { nozzleTemp: v })
                     }
                   />
@@ -134,12 +145,17 @@ export function FilamentPanel({
                     label={`Filament ${i + 1} first layer temperature`}
                     value={f.firstNozzleTemp}
                     min={150}
-                    max={350}
+                    max={maxTemperature}
+                    error={
+                      f.firstNozzleTemp > maxTemperature
+                        ? `Printer limit: ${maxTemperature}°C`
+                        : undefined
+                    }
                     suffix=" °C"
                     onChange={(v) =>
                       typeof v === "number" &&
                       v >= 150 &&
-                      v <= 350 &&
+                      v <= maxTemperature &&
                       update(i, { firstNozzleTemp: v })
                     }
                   />
@@ -162,13 +178,42 @@ export function FilamentPanel({
                     label={`Filament ${i + 1} max flow`}
                     value={f.maxFlow}
                     min={1}
-                    max={50}
+                    max={100}
                     suffix=" mm³/s"
                     onChange={(v) =>
                       typeof v === "number" &&
                       v >= 1 &&
-                      v <= 50 &&
+                      v <= 100 &&
                       update(i, { maxFlow: v })
+                    }
+                  />
+                </div>
+                <div className="field-pair">
+                  <NumberInput
+                    label={`Filament ${i + 1} cooling fan`}
+                    value={f.fan}
+                    min={0}
+                    max={100}
+                    suffix=" %"
+                    onChange={(v) =>
+                      typeof v === "number" &&
+                      v >= 0 &&
+                      v <= 100 &&
+                      update(i, { fan: v })
+                    }
+                  />
+                  <NumberInput
+                    label={`Filament ${i + 1} fan starts at layer`}
+                    value={f.fanLayer ?? settings.fanLayer}
+                    min={1}
+                    max={20}
+                    allowDecimal={false}
+                    onChange={(v) =>
+                      typeof v === "number" &&
+                      Number.isInteger(v) &&
+                      v >= 1 &&
+                      v <= 20 &&
+                      update(i, { fanLayer: v })
                     }
                   />
                 </div>

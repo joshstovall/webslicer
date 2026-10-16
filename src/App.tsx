@@ -125,6 +125,10 @@ import {
 import { loadVendorPrinter } from "./lib/vendor-printers";
 import { FilamentPanel } from "./components/FilamentPanel";
 import { defaultFilament, DEFAULT_MULTI_MATERIAL } from "./lib/multimaterial";
+import {
+  applySettingsPatch,
+  settingsForFilament,
+} from "./lib/material-settings";
 import { SettingsPanel } from "./components/SettingsPanel";
 const initialProject = (): Project => ({
   version: 1,
@@ -971,25 +975,7 @@ function App() {
       settings={project.settings}
       printer={project.printer}
       disabled={busy || loadingPrinter || !hydrated}
-      onChange={(patch) =>
-        commit((p) => {
-          const settings = { ...p.settings, ...patch };
-          return {
-            ...p,
-            settings,
-            filaments:
-              p.filaments?.length === 1
-                ? [
-                    {
-                      ...defaultFilament(settings),
-                      name: p.filaments[0].name,
-                      color: p.filaments[0].color,
-                    },
-                  ]
-                : p.filaments,
-          };
-        })
-      }
+      onChange={(patch) => commit((p) => applySettingsPatch(p, patch))}
       onPrinter={async (printer) => {
         setLoadingPrinter(true);
         try {
@@ -2326,17 +2312,7 @@ function App() {
               multiMaterial,
               settings:
                 filaments.length === 1
-                  ? {
-                      ...p.settings,
-                      material: filaments[0].material,
-                      nozzleTemp: filaments[0].nozzleTemp,
-                      firstNozzleTemp: filaments[0].firstNozzleTemp,
-                      flow: filaments[0].flow,
-                      maxFlow: filaments[0].maxFlow,
-                      density: filaments[0].density,
-                      cost: filaments[0].cost,
-                      fan: filaments[0].fan,
-                    }
+                  ? settingsForFilament(p.settings, filaments[0])
                   : p.settings,
             }))
           }
@@ -2380,6 +2356,26 @@ function App() {
               }))
             }
           />
+          {printerDraft.id === "bambu-x1c" && (
+            <Select
+              label="X1 Carbon mains supply"
+              description="Maximum bed temperature: 120°C on 110 V; 110°C on 220 V."
+              data={[
+                { value: "unknown", label: "Unspecified (110°C bed limit)" },
+                { value: "110", label: "110 V" },
+                { value: "220", label: "220 V" },
+              ]}
+              value={String(printerDraft.mainsVoltage ?? "unknown")}
+              allowDeselect={false}
+              onChange={(v) =>
+                setPrinterDraft((p) => ({
+                  ...p,
+                  mainsVoltage:
+                    v === "110" ? 110 : v === "220" ? 220 : undefined,
+                }))
+              }
+            />
+          )}
           <div className="three-fields">
             {["Build width (X)", "Build depth (Y)", "Build height (Z)"].map(
               (label, i) => (
@@ -2638,7 +2634,9 @@ function App() {
       >
         <Stack>
           <Text size="sm" c="dimmed">
-            Save reusable process and material settings on this device.
+            Save reusable process and material settings on this device. With
+            multiple filaments, applying a preset updates process and shared bed
+            settings; edit each spool in Manage filaments.
           </Text>
           <Group align="end" wrap="nowrap">
             <TextInput
@@ -2670,10 +2668,12 @@ function App() {
                   size="xs"
                   variant="light"
                   onClick={() => {
-                    commit((old) => ({
-                      ...old,
-                      settings: { ...DEFAULT_SETTINGS, ...p.settings },
-                    }));
+                    commit((old) =>
+                      applySettingsPatch(old, {
+                        ...DEFAULT_SETTINGS,
+                        ...p.settings,
+                      }),
+                    );
                     setModal(null);
                   }}
                 >
@@ -2745,12 +2745,14 @@ function App() {
                         ...project,
                         models: [],
                         settings: data.settings,
+                        filaments: undefined,
+                        multiMaterial: undefined,
                       }),
                     ],
                     "preset.webslicer",
                   ),
                 );
-                commit((old) => ({ ...old, settings: p.settings }));
+                commit((old) => applySettingsPatch(old, p.settings));
                 notify("Preset applied.");
               } catch {
                 notify("Invalid preset file.", "red");
@@ -2936,12 +2938,13 @@ function App() {
               <Text size="sm" mt="md">
                 Assign filament to each part, paint surfaces, or use Color by
                 height to create linked bands. Bambu AMS and Snapmaker U1
-                profiles are available. Cuts, splits, and height colors preserve
-                painted materials as linked solid parts. Support painting, STEP,
-                resin slicing, and full Orca project settings are not supported.
-                3MF imports component geometry, material assignments, and
-                painted facets. Generated paths still need printer-specific
-                validation.
+                profiles are available. Manage filaments sets cooling, fan start
+                layer, temperature and flow for each spool; bed temperature is
+                shared. Cuts, splits, and height colors preserve painted
+                materials as linked solid parts. Support painting, STEP, resin
+                slicing, and full Orca project settings are not supported. 3MF
+                imports component geometry, material assignments, and painted
+                facets. Generated paths still need printer-specific validation.
               </Text>
               <Text size="sm" mt="md">
                 <a

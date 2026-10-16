@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { Printer, Settings } from "../types";
+import { thermalLimits } from "../lib/thermal-limits";
 import { PRINTERS, MATERIALS, QUALITY } from "../lib/profiles";
 interface Props {
   filamentCount: number;
@@ -48,6 +49,7 @@ export function SettingsPanel({
   onProfiles,
   disabled,
 }: Props) {
+  const limits = thermalLimits(printer);
   const [advanced, setAdvanced] = useState(false),
     [query, setQuery] = useState("");
   function number(
@@ -62,6 +64,11 @@ export function SettingsPanel({
       <NumberInput
         label={label}
         value={s[key] as number}
+        error={
+          (s[key] as number) > max || (s[key] as number) < min
+            ? `Allowed range: ${min}–${max}${suffix}`
+            : undefined
+        }
         onChange={(v) => {
           if (typeof v === "number" && v >= min && v <= max)
             onChange({ [key]: v });
@@ -83,6 +90,7 @@ export function SettingsPanel({
               "density",
               "cost",
               "fan",
+              "fanLayer",
             ].includes(key))
         }
       />
@@ -292,13 +300,23 @@ export function SettingsPanel({
       id: "material",
       title: "Temperature & cooling",
       icon: Thermometer,
-      summary: `${s.nozzleTemp}° / ${s.bedTemp}°`,
+      summary:
+        filamentCount > 1
+          ? `Per filament / ${s.bedTemp}° bed`
+          : `${s.nozzleTemp}° / ${s.bedTemp}°`,
       keywords: "nozzle bed temperature cooling fan material",
       content: (
         <>
           <div className="field-pair">
-            {number("nozzleTemp", "Nozzle", 150, 350, 5, " °C")}
-            {number("bedTemp", "Bed", 0, 130, 5, " °C")}
+            {number(
+              "nozzleTemp",
+              "Nozzle",
+              150,
+              limits?.nozzle ?? 350,
+              5,
+              " °C",
+            )}
+            {number("bedTemp", "Bed", 0, limits?.bed ?? 130, 5, " °C")}
           </div>
           {advanced && (
             <div className="field-pair">
@@ -306,11 +324,18 @@ export function SettingsPanel({
                 "firstNozzleTemp",
                 "First layer nozzle",
                 150,
-                350,
+                limits?.nozzle ?? 350,
                 5,
                 " °C",
               )}
-              {number("firstBedTemp", "First layer bed", 0, 130, 5, " °C")}
+              {number(
+                "firstBedTemp",
+                "First layer bed",
+                0,
+                limits?.bed ?? 130,
+                5,
+                " °C",
+              )}
             </div>
           )}
           {number("fan", "Cooling fan", 0, 100, 5, " %")}
@@ -428,7 +453,7 @@ export function SettingsPanel({
           }}
           variant="unstyled"
           allowDeselect={false}
-          disabled={disabled}
+          disabled={disabled || filamentCount > 1}
         />
         <span className="muted small">{printer.filament} mm</span>
       </div>

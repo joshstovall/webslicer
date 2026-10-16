@@ -31,6 +31,8 @@ export interface Filament {
   flow: number;
   maxFlow: number;
   fan: number;
+  /** First layer on which part cooling is enabled (one-based). */
+  fanLayer?: number;
 }
 export interface MultiMaterialSettings {
   purgeTower: boolean;
@@ -55,6 +57,7 @@ export interface Printer {
   profileRevision?: string;
   bedOrigin?: [number, number];
   bedType?: string;
+  mainsVoltage?: 110 | 220;
 }
 export interface Settings {
   layerHeight: number;

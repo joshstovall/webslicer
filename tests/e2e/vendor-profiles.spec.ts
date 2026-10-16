@@ -293,3 +293,86 @@ test("Bambu reserved bed areas also reject generated extrusion from direct slici
     page.locator('iframe[title="Local slicing engine"]'),
   ).toHaveCount(0);
 });
+
+test("all vendor profiles enforce thermal limits before and after machine-template compilation", async ({
+  page,
+}) => {
+  test.setTimeout(180000);
+  await page.goto("/");
+  const evidence = await page.evaluate(async () => {
+    const { VENDOR_PRINTERS, loadVendorPrinter } = await import(
+      "/src/lib/vendor-printers.ts"
+    );
+    const { primitive } = await import("/src/lib/geometry.ts");
+    const { slicePlate } = await import("/src/lib/slicer.ts");
+    const { DEFAULT_SETTINGS } = await import("/src/lib/profiles.ts");
+    const { defaultFilament, DEFAULT_MULTI_MATERIAL } = await import(
+      "/src/lib/multimaterial.ts"
+    );
+    const { thermalLimits } = await import("/src/lib/thermal-limits.ts");
+    const result = [];
+    for (const preset of VENDOR_PRINTERS) {
+      const p = await loadVendorPrinter(preset),
+        limits = thermalLimits(p)!;
+      const settings = {
+        ...DEFAULT_SETTINGS,
+        bedTemp: limits.bed,
+        firstBedTemp: limits.bed,
+        adhesion: "none" as const,
+      };
+      const filaments = [0, 1].map((i) => ({
+        ...defaultFilament(settings, i),
+        nozzleTemp: 300,
+        firstNozzleTemp: 300,
+        fan: i ? 80 : 25,
+        fanLayer: i ? 1 : 3,
+      }));
+      const models = [0, 1].map((tool) => ({
+        ...primitive("cube", 1),
+        tool,
+        position: [tool ? 10 : -10, 0, 0] as [number, number, number],
+        scale: [0.2, 0.2, 0.04] as [number, number, number],
+      }));
+      const run = (machine = p, material = filaments) =>
+        slicePlate(
+          models,
+          machine,
+          settings,
+          () => {},
+          new AbortController().signal,
+          material,
+          { ...DEFAULT_MULTI_MATERIAL, purgeVolume: 20 },
+        );
+      let error = "",
+        invalid = "",
+        edited = "";
+      try {
+        const r = await run();
+        if (!r.gcode.includes("M109 S300"))
+          error = "Missing target temperature";
+      } catch (e) {
+        error = (e as Error).message;
+      }
+      try {
+        await run(p, [{ ...filaments[0], firstNozzleTemp: 301 }, filaments[1]]);
+      } catch (e) {
+        invalid = (e as Error).message;
+      }
+      try {
+        await run({ ...p, startGcode: p.startGcode + "\nM104 S301" });
+      } catch (e) {
+        edited = (e as Error).message;
+      }
+      result.push({ id: p.id, error, invalid, edited });
+    }
+    return result;
+  });
+  expect(evidence).toHaveLength(6);
+  for (const e of evidence) {
+    expect(e.error, e.id).toBe("");
+    expect(e.invalid, e.id).toContain(
+      "first-layer temperature must be between 150 and 300",
+    );
+    expect(e.edited, e.id).toContain("outside the 0–300°C limit");
+  }
+});

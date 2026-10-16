@@ -5,6 +5,7 @@ import type {
   Printer,
   Settings,
 } from "../types";
+import { thermalErrors } from "./thermal-limits";
 
 export const FILAMENT_COLORS = [
   "#91ad87",
@@ -33,6 +34,7 @@ export function defaultFilament(s: Settings, index = 0): Filament {
     flow: s.flow,
     maxFlow: s.maxFlow,
     fan: s.fan,
+    fanLayer: s.fanLayer,
   };
 }
 export function purgeVolumeFor(
@@ -84,12 +86,38 @@ export function materialErrors(
   multi: MultiMaterialSettings,
 ): string[] {
   const errors: string[] = [];
+  if (!Number.isFinite(settings.flow) || settings.flow <= 0)
+    errors.push("Process flow ratio must be positive.");
   const capacity = printer.toolCount ?? 1;
   const used = new Set(models.filter((m) => m.visible).map((m) => m.tool ?? 0));
   for (const m of models)
     if (m.visible && m.faceTools)
       for (const tool of m.faceTools) used.add(tool);
   if (settings.supports !== "disabled") used.add(multi.supportTool);
+  errors.push(...thermalErrors(printer, settings, filaments, used));
+  for (const tool of used) {
+    const f = filaments[tool];
+    if (!f) continue;
+    if (
+      !Number.isFinite(f.flow) ||
+      f.flow < 0.5 ||
+      f.flow > 1.5 ||
+      !Number.isFinite(f.maxFlow) ||
+      f.maxFlow < 1 ||
+      f.maxFlow > 100
+    )
+      errors.push(`Filament ${tool + 1} has invalid flow settings.`);
+    const fanLayer = f.fanLayer ?? settings.fanLayer;
+    if (
+      !Number.isFinite(f.fan) ||
+      f.fan < 0 ||
+      f.fan > 100 ||
+      !Number.isInteger(fanLayer) ||
+      fanLayer < 1 ||
+      fanLayer > 20
+    )
+      errors.push(`Filament ${tool + 1} has invalid cooling settings.`);
+  }
   if (!filaments.length || filaments.length > capacity)
     errors.push(`This printer supports ${capacity} filament slots.`);
   for (const tool of used) {

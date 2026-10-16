@@ -12,6 +12,7 @@ import { compileMachineGcode } from "./machine-gcode";
 import { applyFilamentSettings } from "./filament-gcode";
 import { parseGcode } from "./gcode";
 import { auditPurgeVolumes } from "./purge-audit";
+import { auditThermalCommands } from "./thermal-limits";
 import { bedExclusions, segmentHitsRectangle } from "./bed-exclusions";
 import {
   defaultFilament,
@@ -71,15 +72,20 @@ export async function slicePlate(
             filaments,
           );
           auditPurgeVolumes(planned, printer.filament, multi);
-          const result = parseGcode(
-            compileMachineGcode(planned, printer, settings, filaments, multi),
-            {
-              diameter: printer.filament,
-              density: settings.density,
-              cost: settings.cost,
-              filaments,
-            },
+          const compiled = compileMachineGcode(
+            planned,
+            printer,
+            settings,
+            filaments,
+            multi,
           );
+          auditThermalCommands(compiled, printer);
+          const result = parseGcode(compiled, {
+            diameter: printer.filament,
+            density: settings.density,
+            cost: settings.cost,
+            filaments,
+          });
           if (!result.layers.length)
             throw new Error("No printable layers were generated.");
           const excluded = bedExclusions(printer, false);

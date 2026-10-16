@@ -216,7 +216,9 @@ export function processProfile(s: Settings, multi?: MultiMaterialSettings) {
   };
 }
 export function deviceProfile(p: Printer, filaments?: Filament[]) {
-  const multi = (filaments?.length ?? 1) > 1 || Boolean(p.firmware);
+  // Explicit filament jobs use relative E so material flow can be applied
+  // uniformly, including a single spool. The raw device API keeps its legacy default.
+  const multi = Boolean(filaments?.length) || Boolean(p.firmware);
   return {
     deviceName: p.name,
     mode: "FDM",
@@ -233,6 +235,7 @@ export function deviceProfile(p: Printer, filaments?: Filament[]) {
       ...(p.firmware ? [] : ["T{tool}", ...p.startGcode.split("\n")]),
       ";STRATUM_INITIAL_TOOL:{tool}",
       "T{tool}",
+      "G90",
       multi ? "M83" : "M82",
       ";STRATUM_PRINT_BEGIN",
     ],
