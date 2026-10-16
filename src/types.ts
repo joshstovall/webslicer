@@ -33,6 +33,10 @@ export interface Filament {
   fan: number;
   /** First layer on which part cooling is enabled (one-based). */
   fanLayer?: number;
+  bridgeFan?: number;
+  auxiliaryFan?: number;
+  auxiliaryFanLayer?: number;
+  auxiliaryFanRampLayers?: number;
   fanRampLayers?: number;
   minLayerTime?: number;
   minPrintSpeed?: number;
@@ -74,7 +78,12 @@ export interface Printer {
   bedOrigin?: [number, number];
   bedType?: string;
   mainsVoltage?: 110 | 220;
-  hardware?: { enclosed?: boolean; abrasiveTools?: number[] };
+  hardware?: {
+    enclosed?: boolean;
+    abrasiveTools?: number[];
+    auxiliaryFan?: boolean;
+    auxiliaryFanIndex?: number;
+  };
 }
 export interface Settings {
   layerHeight: number;
@@ -189,6 +198,7 @@ export const FEATURE_COLORS = [
   "#ba80bc",
   "#b9c0c5",
   "#cf7955",
+  "#51a9a0",
 ];
 export const FEATURE_NAMES = [
   "Walls",
@@ -197,4 +207,5 @@ export const FEATURE_NAMES = [
   "Supports",
   "Travel",
   "Purge tower",
+  "Bridges",
 ];

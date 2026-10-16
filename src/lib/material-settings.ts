@@ -47,6 +47,14 @@ export function applySettingsPatch(
   const filament = {
     ...filaments[0],
     ...material,
+    ...(patch.material !== undefined && patch.material !== filaments[0].material
+      ? {
+          bridgeFan: undefined,
+          auxiliaryFan: undefined,
+          auxiliaryFanLayer: undefined,
+          auxiliaryFanRampLayers: undefined,
+        }
+      : {}),
     requirements:
       patch.material !== undefined && patch.material !== filaments[0].material
         ? undefined

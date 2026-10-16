@@ -1,3 +1,4 @@
+import { auxiliaryFanIndex, auxiliarySpeedAtLayer } from "./fan-control";
 import type { Filament, Printer, Settings } from "../types";
 import { fanSpeedAtLayer } from "./cooling";
 
@@ -11,7 +12,8 @@ export function applyFilamentSettings(
   let tool = 0,
     layer = -1,
     printing = false,
-    changing = false;
+    changing = false,
+    bridge = false;
   let x = 0,
     y = 0,
     z = 0,
@@ -20,7 +22,17 @@ export function applyFilamentSettings(
   let feed = settings.speed * 60,
     outputFeed = feed;
   let lastTemperature = "",
-    lastFan = "";
+    lastFan = "",
+    lastAuxiliary = "";
+  const auxiliary = auxiliaryFanIndex(printer);
+  const used = new Set<number>([
+    Number(gcode.match(/^;STRATUM_INITIAL_TOOL:(\d+)/m)?.[1] ?? 0),
+  ]);
+  for (const m of gcode.matchAll(/^;STRATUM_TOOL_CHANGE:\d+:(\d+)/gm))
+    used.add(Number(m[1]));
+  const manageAuxiliary =
+    auxiliary !== undefined &&
+    [...used].some((t) => filaments[t]?.auxiliaryFan !== undefined);
   const area = Math.PI * (printer.filament / 2) ** 2;
   const lines: string[] = [];
   const materialCommands = (force = false) => {
@@ -31,18 +43,34 @@ export function applyFilamentSettings(
     const temperature = `M109 S${layer <= 0 ? f.firstNozzleTemp : f.nozzleTemp}${target}`;
     // Bambu P1 is the part fan. U1 binds its unindexed fan to the active head.
     const fanIndex = printer.firmware === "bambu" ? " P1" : "";
-    const fan = `M106${fanIndex} S${fanSpeedAtLayer(f, settings, layer + 1)}`;
+    const partSpeed =
+      bridge &&
+      f.bridgeFan !== undefined &&
+      layer + 1 >= (f.fanLayer ?? settings.fanLayer)
+        ? Math.round((f.bridgeFan * 255) / 100)
+        : fanSpeedAtLayer(f, settings, layer + 1);
+    const fan = `M106${fanIndex} S${partSpeed}`;
     if (force || lastTemperature !== temperature) lines.push(temperature);
     if (force || lastFan !== fan) lines.push(fan);
     lastTemperature = temperature;
     lastFan = fan;
+    if (manageAuxiliary) {
+      const command = `M106 P${auxiliary} S${auxiliarySpeedAtLayer(f, settings, layer + 1)}`;
+      if (force || lastAuxiliary !== command) lines.push(command);
+      lastAuxiliary = command;
+    }
   };
   for (const raw of gcode.split(/\r?\n/)) {
     let line = raw;
     const initial = line.match(/^;STRATUM_INITIAL_TOOL:(\d+)/);
     if (initial) tool = Number(initial[1]);
     if (line === ";STRATUM_PRINT_BEGIN") printing = true;
-    if (line === ";STRATUM_PRINT_END") printing = false;
+    if (line === ";STRATUM_PRINT_END") {
+      printing = false;
+      lines.push(line);
+      if (manageAuxiliary) lines.push(`;STRATUM_AUX_SHUTDOWN:${auxiliary}`);
+      continue;
+    }
     const change = line.match(/^;STRATUM_TOOL_CHANGE:\d+:(\d+)/);
     if (change) {
       tool = Number(change[1]);
@@ -50,6 +78,7 @@ export function applyFilamentSettings(
     }
     if (line === ";STRATUM_TOOL_READY") {
       changing = false;
+      bridge = false;
       absoluteXYZ = relativeE = true;
       lines.push(line, "G90", "M83");
       materialCommands(true);
@@ -59,6 +88,14 @@ export function applyFilamentSettings(
     }
     if (printing && !changing && /^;LAYER:/.test(line)) {
       layer++;
+      bridge = false;
+      lines.push(line);
+      materialCommands();
+      continue;
+    }
+    const bridgeMarker = line.match(/^;STRATUM_BRIDGE:([01])$/);
+    if (printing && !changing && bridgeMarker) {
+      bridge = bridgeMarker[1] === "1";
       lines.push(line);
       materialCommands();
       continue;
@@ -72,14 +109,16 @@ export function applyFilamentSettings(
       args[m[1].toUpperCase()] = Number(m[2]);
     const active = printing && !changing;
     // Engine updates are global; material markers replace only the primary fan.
-    // Auxiliary and chamber fans remain under their explicit machine commands.
+    // An enabled auxiliary override owns its configured index; chamber fans and
+    // unconfigured auxiliary fans retain their explicit machine commands.
     if (
       active &&
       (command === "M104" ||
         command === "M109" ||
         ((command === "M106" || command === "M107") &&
           (args.P === undefined ||
-            (printer.firmware === "bambu" && args.P === 1))))
+            (printer.firmware === "bambu" && args.P === 1) ||
+            (manageAuxiliary && args.P === auxiliary))))
     )
       continue;
     if (command === "G90") absoluteXYZ = true;

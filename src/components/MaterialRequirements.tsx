@@ -51,7 +51,14 @@ export function MaterialRequirements({
                   "",
                 );
                 if (material.trim())
-                  onChange({ material, requirements: undefined });
+                  onChange({
+                    material,
+                    requirements: undefined,
+                    bridgeFan: undefined,
+                    auxiliaryFan: undefined,
+                    auxiliaryFanLayer: undefined,
+                    auxiliaryFanRampLayers: undefined,
+                  });
               }}
             />
             <Switch

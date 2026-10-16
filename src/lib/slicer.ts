@@ -203,6 +203,8 @@ export async function slicePlate(
               outputMaxFlowrate: Math.max(...filaments.map((f) => f.maxFlow)),
               stratumPurgeVolume: multi.purgeVolume,
               stratumExactPurge: true,
+              stratumBridgeCooling: true,
+              stratumAlignedLayers: true,
               stratumPurgeVolumes: multi.purgeVolumes,
               stratumFilamentFlows: filaments.map((f) => f.flow),
               stratumTowerPosition:

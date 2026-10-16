@@ -1,3 +1,4 @@
+import { ExtraCooling } from "./ExtraCooling";
 import { MaterialRequirements } from "./MaterialRequirements";
 import { materialCompatibility } from "../lib/material-compatibility";
 import {
@@ -161,11 +162,19 @@ export function FilamentPanel({
                       update(i, {
                         material: "Custom",
                         requirements: undefined,
+                        bridgeFan: undefined,
+                        auxiliaryFan: undefined,
+                        auxiliaryFanLayer: undefined,
+                        auxiliaryFanRampLayers: undefined,
                       });
                     if (m)
                       update(i, {
                         material: m.name,
                         requirements: undefined,
+                        bridgeFan: undefined,
+                        auxiliaryFan: undefined,
+                        auxiliaryFanLayer: undefined,
+                        auxiliaryFanRampLayers: undefined,
                         nozzleTemp: m.nozzle,
                         firstNozzleTemp: m.nozzle + 5,
                         density: m.density,
@@ -321,6 +330,13 @@ export function FilamentPanel({
                             v <= 100 &&
                             update(i, { minPrintSpeed: v })
                           }
+                        />
+                        <ExtraCooling
+                          filament={f}
+                          index={i}
+                          printer={printer}
+                          settings={settings}
+                          onChange={(patch) => update(i, patch)}
                         />
                         <Text size="xs" c="dimmed">
                           If slowing is insufficient, the head retracts and

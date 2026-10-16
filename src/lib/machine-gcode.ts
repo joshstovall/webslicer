@@ -1,3 +1,4 @@
+import { finalizeFanShutdown } from "./fan-control";
 import type {
   Filament,
   MultiMaterialSettings,
@@ -16,6 +17,7 @@ export function compileMachineGcode(
   filaments: Filament[],
   multi: MultiMaterialSettings,
 ): string {
+  gcode = finalizeFanShutdown(gcode);
   if (!printer.firmware) return gcode;
   if (!printer.startGcode || !printer.endGcode || !printer.toolChangeGcode)
     throw new Error("Load the official machine profile before slicing.");

@@ -29,6 +29,7 @@ export function parseGcode(
     abs = true,
     absE = true,
     feature = 0,
+    bridge = false,
     seconds = 0,
     tool = 0,
     toolChanges = 0;
@@ -73,12 +74,16 @@ export function parseGcode(
   for (const raw of gcode.split(/\r?\n/)) {
     const line = raw.trim();
     if (layerMarker.test(line)) {
+      bridge = false;
       pendingLayer = true;
       inLayers = true;
     }
     if (line === ";STRATUM_PRINT_END") inLayers = false;
     if (line === ";STRATUM_MACHINE_CHANGE_BEGIN") machineChange = true;
     if (line === ";STRATUM_MACHINE_CHANGE_END") machineChange = false;
+    if (line === ";STRATUM_TOOL_READY") bridge = false;
+    const bridgeMarker = line.match(/^;STRATUM_BRIDGE:([01])$/);
+    if (bridgeMarker) bridge = bridgeMarker[1] === "1";
     const type = line
       .match(/;\s*(?:TYPE:|FEATURE:|feature )(.+)/i)?.[1]
       ?.toLowerCase();
@@ -87,11 +92,13 @@ export function parseGcode(
         ? 5
         : /support/.test(type)
           ? 3
-          : /solid|skin|surface|bridge/.test(type)
-            ? 2
-            : /sparse|infill|fill/.test(type)
-              ? 1
-              : 0;
+          : /bridge/.test(type)
+            ? 6
+            : /solid|skin|surface/.test(type)
+              ? 2
+              : /sparse|infill|fill/.test(type)
+                ? 1
+                : 0;
     const code = line
       .split(";")[0]
       .replace(/\([^)]*\)/g, "")
@@ -262,7 +269,7 @@ export function parseGcode(
         const a = pointAt(from),
           b = pointAt(to);
         segments.push(...a, ...b);
-        features.push(depositing ? feature : 4);
+        features.push(depositing ? (bridge ? 6 : feature) : 4);
         speeds.push(f / 60);
         tools.push(tool);
         segmentCount++;

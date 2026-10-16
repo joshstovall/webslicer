@@ -1,3 +1,4 @@
+import { validExtraCooling } from "./fan-control";
 import type { Filament, Printer, Settings } from "../types";
 
 export function validCoolingSettings(f: Filament, s: Settings): boolean {
@@ -16,6 +17,7 @@ export function validCoolingSettings(f: Filament, s: Settings): boolean {
         : s.minPrintSpeed
       : f.minPrintSpeed;
   return (
+    validExtraCooling(f) &&
     Number.isInteger(ramp) &&
     ramp >= 1 &&
     ramp <= 20 &&

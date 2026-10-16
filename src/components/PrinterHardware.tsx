@@ -1,7 +1,10 @@
+import { auxiliaryFanIndex } from "../lib/fan-control";
 import {
   Accordion,
   Button,
   MultiSelect,
+  NumberInput,
+  Switch,
   Select,
   Stack,
   Text,
@@ -75,6 +78,45 @@ export function PrinterHardware({
                 update({ abrasiveTools: values.map(Number) })
               }
             />
+            {(!printer.firmware ||
+              ["bambu-x1c", "bambu-p1s", "bambu-p1p", "snapmaker-u1"].includes(
+                printer.id,
+              )) && (
+              <>
+                <Switch
+                  label="Auxiliary part-cooling fan installed"
+                  checked={auxiliaryFanIndex(printer) !== undefined}
+                  onChange={(e) =>
+                    update({
+                      auxiliaryFan: e.currentTarget.checked,
+                      ...(!printer.firmware
+                        ? {
+                            auxiliaryFanIndex:
+                              printer.hardware?.auxiliaryFanIndex ?? 2,
+                          }
+                        : {}),
+                    })
+                  }
+                />
+                {!printer.firmware && printer.hardware?.auxiliaryFan && (
+                  <NumberInput
+                    label="Auxiliary fan P index"
+                    description="Use the fan identifier configured in your firmware; this is not a tool number."
+                    value={printer.hardware.auxiliaryFanIndex ?? 2}
+                    min={1}
+                    max={255}
+                    allowDecimal={false}
+                    onChange={(v) =>
+                      typeof v === "number" &&
+                      Number.isInteger(v) &&
+                      v >= 1 &&
+                      v <= 255 &&
+                      update({ auxiliaryFanIndex: v })
+                    }
+                  />
+                )}
+              </>
+            )}
             <Button
               variant="subtle"
               size="xs"

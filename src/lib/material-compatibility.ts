@@ -1,3 +1,4 @@
+import { auxiliaryFanIndex } from "./fan-control";
 import type {
   Filament,
   Model,
@@ -105,6 +106,14 @@ export function validPrinterHardware(p: Printer): boolean {
     typeof h === "object" &&
     !Array.isArray(h) &&
     (h.enclosed === undefined || typeof h.enclosed === "boolean") &&
+    (h.auxiliaryFan === undefined || typeof h.auxiliaryFan === "boolean") &&
+    (h.auxiliaryFanIndex === undefined ||
+      (Number.isInteger(h.auxiliaryFanIndex) &&
+        h.auxiliaryFanIndex >= 1 &&
+        h.auxiliaryFanIndex <= 255)) &&
+    (p.firmware !== undefined ||
+      h.auxiliaryFan !== true ||
+      h.auxiliaryFanIndex !== undefined) &&
     (h.abrasiveTools === undefined ||
       (Array.isArray(h.abrasiveTools) &&
         new Set(h.abrasiveTools).size === h.abrasiveTools.length &&
@@ -150,6 +159,10 @@ export function materialCompatibility(
       continue;
     }
     const label = `Filament ${tool + 1} (${f.material})`;
+    if ((f.auxiliaryFan ?? 0) > 0 && auxiliaryFanIndex(p) === undefined)
+      errors.push(
+        `${label} requests auxiliary cooling, but this printer has no configured auxiliary fan. Disable that spool override or configure installed fan hardware.`,
+      );
     if (!validMaterialRequirements(f.requirements)) {
       errors.push(`${label} has invalid material requirements.`);
       continue;
