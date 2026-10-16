@@ -164,14 +164,11 @@ export function PaintPanel({
                     { value: "disabled", label: "Disabled" },
                     { value: "auto", label: "Automatic · normal" },
                     { value: "manual", label: "Enforced only" },
-                    ...(supportMode === "tree"
-                      ? [
-                          {
-                            value: "tree",
-                            label: "Legacy tree · normal output",
-                          },
-                        ]
-                      : []),
+                    { value: "tree", label: "Automatic · branching trees" },
+                    {
+                      value: "tree-manual",
+                      label: "Enforced only · branching trees",
+                    },
                   ]}
                   allowDeselect={false}
                   size="xs"

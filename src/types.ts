@@ -148,6 +148,10 @@ export interface Settings {
   supportDensity: number;
   supportAngle: number;
   supportOffset: number;
+  treeBranchAngle?: number;
+  treeBranchSpacing?: number;
+  treeTipDiameter?: number;
+  treeBranchDiameter?: number;
   adhesion: string;
   brimWidth: number;
   brimGap: number;

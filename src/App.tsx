@@ -3238,12 +3238,12 @@ function App() {
             </Tabs.Panel>
             <Tabs.Panel value="about" pt="md">
               <Text size="sm">
-                Multi-tool FDM slicing with automatic normal supports, adaptive
-                and manual variable layers, spiral vase, multiple infill
-                patterns, and skirt/brim/raft. Multiple objects and plates,
-                G-code inspection, and reusable print presets are supported.
-                Imported G-code previews include tool-colored arcs, circles and
-                helices.
+                Multi-tool FDM slicing with normal or branching tree supports,
+                adaptive and manual variable layers, spiral vase, multiple
+                infill patterns, and skirt/brim/raft. Multiple objects and
+                plates, G-code inspection, and reusable print presets are
+                supported. Imported G-code previews include tool-colored arcs,
+                circles and helices.
               </Text>
               <Text size="sm" mt="md">
                 Assign filament to each part, paint surfaces, or use Color by

@@ -1,3 +1,4 @@
+import { treeSettingErrors } from "./tree-settings";
 import { attachModifiers, modifierErrors } from "./modifiers";
 import { attachSupportPaint, validateSupportPaint } from "./support-paint";
 import { materialCompatibility } from "./material-compatibility";
@@ -39,6 +40,9 @@ export async function slicePlate(
   const errors = [
     ...materialErrors(models, printer, filaments, settings, multi),
     ...modifierErrors(models, settings),
+    ...(settings.supports.startsWith("tree")
+      ? treeSettingErrors(settings)
+      : []),
   ];
   if (
     models.some(
@@ -122,11 +126,6 @@ export async function slicePlate(
             filaments,
           });
           result.warnings.push(
-            ...(settings.supports === "tree"
-              ? [
-                  "This project's legacy tree-support setting generates normal supports. Branching tree supports are not implemented yet.",
-                ]
-              : []),
             ...cooled.warnings,
             ...materialCompatibility(
               models,

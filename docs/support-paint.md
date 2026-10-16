@@ -10,7 +10,7 @@ Paint selects surfaces where supports begin. Only downward-facing patches partic
 
 Volume modifiers apply first, then painted enforcers, then painted blockers. Enforcers are clipped to new underside areas; blockers remove contact seeds. If different assembly parts have overlapping paint, blockers win. Hidden owners do not contribute. A part's paint reaches its linked material regions, not unrelated objects. Other printable geometry still clips support contact, projection and clearance. Support density, gap, XY separation, adhesion and dedicated filament continue through the normal engine pipeline.
 
-Blocking contacts does not cut existing support columns from higher, unblocked surfaces. Painting a top face red therefore does not sever a column passing above it. Normal support geometry is produced; branching tree supports remain unfinished.
+Blocking contacts does not cut existing support columns from higher, unblocked surfaces. Painting a top face red therefore does not sever a column passing above it. Choose normal or branching tree geometry in the support mode selector; see `tree-supports.md` for branch controls and limits.
 
 ## Geometry edits and precision
 

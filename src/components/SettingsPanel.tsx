@@ -1,3 +1,4 @@
+import { treeSettings } from "../lib/tree-settings";
 import { LayerHeightEditor } from "./LayerHeightEditor";
 import { flatLayerCurve, manualLayerErrors } from "../lib/layer-height";
 import { vendorNozzleLimits } from "../lib/nozzle-profiles";
@@ -71,7 +72,12 @@ export function SettingsPanel({
     return (
       <NumberInput
         label={label}
-        value={s[key] as number}
+        value={
+          (s[key] ??
+            (treeSettings(s) as Partial<Record<keyof Settings, number>>)[
+              key
+            ]) as number
+        }
         error={
           (s[key] as number) > max || (s[key] as number) < min
             ? `Allowed range: ${min}–${max}${suffix}`
@@ -350,20 +356,59 @@ export function SettingsPanel({
             { value: "disabled", label: "Disabled" },
             { value: "auto", label: "Automatic · normal" },
             { value: "manual", label: "Enforced only" },
-            ...(s.supports === "tree"
-              ? [{ value: "tree", label: "Legacy tree · normal output" }]
-              : []),
+            { value: "tree", label: "Automatic · branching trees" },
+            { value: "tree-manual", label: "Enforced only · branching trees" },
           ])}
-          {s.supports === "tree" && (
-            <Text size="xs" c="orange">
-              This saved mode generates normal supports. Branching tree supports
-              are not implemented yet.
-            </Text>
+          {s.supports.startsWith("tree") && (
+            <>
+              <Text size="xs" c="dimmed">
+                Contacts taper into branches that merge toward the bed or land
+                on the model. Painted and volume-selected contacts still apply.
+                Angle is measured from vertical; contact caps can be wider than
+                the tip diameter.
+              </Text>
+              <div className="field-pair">
+                {number(
+                  "treeBranchAngle",
+                  "Maximum branch angle",
+                  5,
+                  60,
+                  1,
+                  "°",
+                )}
+                {number(
+                  "treeBranchSpacing",
+                  "Branch spacing",
+                  1,
+                  10,
+                  0.5,
+                  " mm",
+                )}
+              </div>
+              <div className="field-pair">
+                {number(
+                  "treeTipDiameter",
+                  "Tip diameter",
+                  Math.max(0.4, s.lineWidth * 2),
+                  6,
+                  0.2,
+                  " mm",
+                )}
+                {number(
+                  "treeBranchDiameter",
+                  "Maximum trunk diameter",
+                  1,
+                  30,
+                  0.5,
+                  " mm",
+                )}
+              </div>
+            </>
           )}
           {s.supports !== "disabled" && (
             <>
               <div className="field-pair">
-                {s.supports !== "manual" &&
+                {!["manual", "tree-manual"].includes(s.supports) &&
                   number("supportAngle", "Overhang angle", 15, 85, 1, "°")}
                 {number("supportDensity", "Density", 5, 80, 1, " %")}
               </div>

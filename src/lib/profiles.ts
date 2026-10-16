@@ -1,3 +1,4 @@
+import { treeSettings } from "./tree-settings";
 import type {
   Printer,
   Settings,
@@ -184,8 +185,17 @@ export function processProfile(s: Settings, multi?: MultiMaterialSettings) {
     sliceAdaptive: s.manualLayers || s.adaptive,
     stratumLayerCurve: s.manualLayers ? s.layerHeightCurve : undefined,
     sliceMinHeight: s.minLayerHeight,
-    sliceSupportType: s.supports === "tree" ? "auto" : s.supports,
-    sliceSupportTree: s.supports === "tree",
+    sliceSupportType:
+      s.supports === "tree"
+        ? "auto"
+        : s.supports === "tree-manual"
+          ? "manual"
+          : s.supports,
+    sliceSupportTree: s.supports === "tree" || s.supports === "tree-manual",
+    stratumTreeAngle: treeSettings(s).treeBranchAngle,
+    stratumTreeSpacing: treeSettings(s).treeBranchSpacing,
+    stratumTreeTipDiameter: treeSettings(s).treeTipDiameter,
+    stratumTreeBranchDiameter: treeSettings(s).treeBranchDiameter,
     sliceSupportDensity: s.supportDensity / 100,
     sliceSupportAngle: s.supportAngle,
     sliceSupportOffset: s.supportOffset,

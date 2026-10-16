@@ -4,7 +4,7 @@ Select an object → **Object modifiers**. Add a cube, cylinder or sphere, or im
 
 In **Print setup → Support & adhesion**, choose **Automatic · normal** to edit automatically detected contacts or **Enforced only** to generate contacts solely from enforcers. Enforcers ignore the automatic overhang-angle threshold, but only apply to newly exposed undersides. They do not create supports inside solid geometry. An enabled enforcer with supports disabled fails preflight with an actionable message. Blockers alone are harmless when supports are disabled.
 
-These are contact masks: blockers remove initiation areas before support columns are projected downward. A blocker below an underside does not cut an existing column into floating pieces. Supports from an unblocked higher underside can pass through the same volume. Cover the contact area to prevent that support. Native support spacing, XY clearance, density, dedicated filament and adhesion still apply. Surface brush painting is described in `support-paint.md`; branching tree supports remain unfinished.
+These are contact masks: blockers remove initiation areas before support columns are projected downward. A blocker below an underside does not cut an existing column into floating pieces. Supports from an unblocked higher underside can pass through the same volume. Cover the contact area to prevent that support. Native support spacing, XY clearance, density, dedicated filament and adhesion still apply. Surface brush painting is described in `support-paint.md`; branching tree supports are described in `tree-supports.md`.
 
 ## Geometry and persistence
 

@@ -1,3 +1,4 @@
+import { treeSettingErrors, TREE_LIMITS } from "./tree-settings";
 import { validateModifiers } from "./modifiers";
 import { validateSupportPaint } from "./support-paint";
 import { validManualLayerSettings } from "./layer-height";
@@ -154,6 +155,15 @@ export function validateProject(p: unknown): Project {
     v.settings.speed <= 0
   )
     throw new Error("Invalid layer height or print speed.");
+  if (
+    Object.keys(TREE_LIMITS).some(
+      (key) =>
+        (v.settings as unknown as Record<string, unknown>)[key] !== undefined,
+    )
+  ) {
+    const errors = treeSettingErrors(v.settings);
+    if (errors.length) throw new Error(errors.join("\n"));
+  }
   if (!validManualLayerSettings(v.settings))
     throw new Error("Invalid manual layer-height settings.");
   for (const m of v.models) {

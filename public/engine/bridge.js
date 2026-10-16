@@ -203,11 +203,14 @@ window.addEventListener("message", async (e) => {
     await new Promise((resolve, reject) =>
       engineClient.prepare(
         engine.settings,
-        (progress) =>
+        (progress, message) =>
           send({
             type: "progress",
             progress: 0.8 + progress * 0.15,
-            stage: "Planning toolpaths",
+            stage:
+              message === "branching supports"
+                ? "Growing tree supports"
+                : "Planning toolpaths",
           }),
         (result) =>
           result?.error ? reject(new Error(result.error)) : resolve(),
