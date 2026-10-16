@@ -1,3 +1,8 @@
+import { ProcessImportDialog } from "./components/ProcessImportDialog";
+import {
+  readProcessSettings,
+  type ProcessImportReport,
+} from "./lib/import-process";
 import { ModifierPanel } from "./components/ModifierPanel";
 import type { ModifierMesh } from "./types";
 import { validManualLayerSettings } from "./lib/layer-height";
@@ -222,6 +227,14 @@ function App() {
     [errors, setErrors] = useState<string[]>([]),
     [importing, setImporting] = useState(false),
     [loadingPrinter, setLoadingPrinter] = useState(false);
+  const importActive = useRef(false);
+  const [processImport, setProcessImport] = useState<{
+    id: string;
+    name: string;
+    report: ProcessImportReport;
+    warnings: string[];
+    resolve: (patch: Partial<Settings> | null) => void;
+  } | null>(null);
   const [loadingPackage, setLoadingPackage] = useState(false);
   const previewRequest = useRef(0);
   const [printerDraft, setPrinterDraft] = useState<PrinterType>(
@@ -551,6 +564,8 @@ function App() {
     setModal(null);
   }
   async function importFiles(files: FileList | File[]) {
+    if (importActive.current) return;
+    importActive.current = true;
     previewRequest.current++;
     setLoadingPackage(false);
     setImporting(true);
@@ -619,7 +634,38 @@ function App() {
         }
         const targetPlate = projectRef.current.activePlate;
         const imported = await importModelFile(file, targetPlate, materials);
-        const p = projectRef.current;
+        let processPatch: Partial<Settings> = {};
+        if (imported.processSettings || imported.processWarnings?.length) {
+          const current = projectRef.current;
+          const report = readProcessSettings(
+            imported.processSettings ?? {},
+            current.settings,
+            current.printer,
+          );
+          if (
+            report.entries.length ||
+            report.skipped.length ||
+            imported.processWarnings?.length
+          ) {
+            notifications.clean();
+            const choice = await new Promise<Partial<Settings> | null>(
+              (resolve) =>
+                setProcessImport({
+                  id: newId(),
+                  name: file.name,
+                  report,
+                  warnings: [
+                    ...imported.warnings,
+                    ...(imported.processWarnings ?? []),
+                  ],
+                  resolve,
+                }),
+            );
+            if (choice === null) break;
+            processPatch = choice;
+          }
+        }
+        const p = applySettingsPatch(projectRef.current, processPatch);
         const { models: added, filaments: importedFilaments } =
           bindImportedMaterials(p, imported);
         if (!p.plates.includes(targetPlate)) {
@@ -655,6 +701,7 @@ function App() {
     } catch (e) {
       notify((e as Error).message, "red");
     } finally {
+      importActive.current = false;
       setImporting(false);
       if (fileInput.current) fileInput.current.value = "";
     }
@@ -2422,6 +2469,18 @@ function App() {
       >
         {mobilePanel === "settings" ? settingsPanel : objectPanel}
       </Drawer>
+      {processImport && (
+        <ProcessImportDialog
+          key={processImport.id}
+          name={processImport.name}
+          report={processImport.report}
+          warnings={processImport.warnings}
+          onResolve={(patch) => {
+            processImport.resolve(patch);
+            setProcessImport(null);
+          }}
+        />
+      )}
       <Modal
         opened={modal === "primitives"}
         onClose={() => setModal(null)}

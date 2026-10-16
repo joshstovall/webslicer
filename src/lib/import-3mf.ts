@@ -13,6 +13,8 @@ export interface ModelImport {
   models: Model[];
   palette: ImportedMaterial[];
   warnings: string[];
+  processSettings?: Record<string, unknown>;
+  processWarnings?: string[];
 }
 const children = (node: Element, name: string) =>
   Array.from(node.children).filter((n) => n.localName === name);
@@ -85,9 +87,27 @@ export function import3mf(
   plate: number,
 ): ModelImport {
   let total = 0;
+  let skippedProcess = false;
+  const unsupportedFiles = new Set<string>();
+  let hasSupportPaint = false,
+    hasSeamPaint = false;
   const files = unzipSync(bytes, {
     filter: (e) => {
+      if (
+        /^Metadata\/(layer_heights_profile\.txt|layer_config_ranges\.xml)$/i.test(
+          e.name,
+        ) &&
+        e.originalSize
+      )
+        unsupportedFiles.add(e.name);
       if (!/\.(model|rels|config)$/i.test(e.name)) return false;
+      if (
+        e.name.toLowerCase() === "metadata/project_settings.config" &&
+        e.originalSize > 4 * 1024 * 1024
+      ) {
+        skippedProcess = true;
+        return false;
+      }
       total += e.originalSize;
       if (total > 200 * 1024 * 1024)
         throw new Error("Expanded 3MF geometry exceeds 200 MB.");
@@ -138,11 +158,29 @@ export function import3mf(
   const palette: ImportedMaterial[] = [];
   const warnings: string[] = [];
   let hasMaterials = false;
-  if (files["Metadata/project_settings.config"]) {
+  let processSettings: Record<string, unknown> | undefined;
+  const processWarnings = [...unsupportedFiles].map(
+    (name) =>
+      `${name}: variable layer profiles and height-range overrides are not transferred.`,
+  );
+  if (skippedProcess)
+    warnings.push(
+      "The 3MF process metadata exceeds 4 MB and was not imported.",
+    );
+  const projectSettings = Object.keys(files).find(
+    (p) => p.toLowerCase() === "metadata/project_settings.config",
+  );
+  if (projectSettings) {
     try {
-      const p = JSON.parse(
-        strFromU8(files["Metadata/project_settings.config"]),
-      );
+      const p = JSON.parse(strFromU8(files[projectSettings]));
+      if (
+        !p ||
+        typeof p !== "object" ||
+        Array.isArray(p) ||
+        Object.keys(p).length > 2000
+      )
+        throw new Error("Invalid or excessive project settings.");
+      processSettings = p;
       if (Array.isArray(p.filament_colour) && p.filament_colour.length <= 64)
         for (const [i, c] of p.filament_colour.entries()) {
           hasMaterials = true;
@@ -160,7 +198,7 @@ export function import3mf(
         }
     } catch {
       warnings.push(
-        "The 3MF filament settings could not be read; geometry and explicit part assignments were retained.",
+        "The 3MF project settings could not be read; geometry and explicit part assignments were retained.",
       );
     }
   }
@@ -190,8 +228,21 @@ export function import3mf(
   const settingsObjects = new Map<string, Element>();
   if (files["Metadata/model_settings.config"]) {
     const config = documentOf(files["Metadata/model_settings.config"]);
-    for (const object of Array.from(config.getElementsByTagName("object")))
+    for (const object of Array.from(config.getElementsByTagName("object"))) {
       settingsObjects.set(object.getAttribute("id")!, object);
+      for (const node of [object, ...children(object, "part")])
+        for (const [key, value] of Object.entries(metadata(node))) {
+          if (
+            ["name", "extruder", "matrix"].includes(key) ||
+            key.startsWith("source_")
+          )
+            continue;
+          if (processWarnings.length < 1000)
+            processWarnings.push(
+              `Object ${object.getAttribute("id")}${node === object ? "" : ` / part ${node.getAttribute("id")}`}: ${key.slice(0, 160)}=${String(value).slice(0, 240)}. Per-object process overrides are not transferred.`,
+            );
+        }
+    }
   }
   const models: Model[] = [];
   let triangleCount = 0;
@@ -266,6 +317,9 @@ export function import3mf(
         surfaceTools: number[] = [];
       const resources = child(doc.root, "resources")!;
       for (const [index, face] of faces.entries()) {
+        if (attr(face, "paint_supports")?.replaceAll("0", ""))
+          hasSupportPaint = true;
+        if (attr(face, "paint_seam")?.replaceAll("0", "")) hasSeamPaint = true;
         const ids = ["v1", "v2", "v3"].map((k) => Number(face.getAttribute(k)));
         if (
           !ids.every((i) => Number.isInteger(i) && i >= 0 && i < points.length)
@@ -466,9 +520,16 @@ export function import3mf(
   }
   if (!models.length)
     throw new Error("No printable mesh was found in this 3MF.");
+  if (hasSupportPaint)
+    processWarnings.push(
+      "Painted support selections are not transferred. Repaint support contacts in Stratum before using enforced-only supports.",
+    );
+  if (hasSeamPaint) processWarnings.push("Painted seams are not transferred.");
   return {
     models,
     palette: hasMaterials ? palette : [],
     warnings: [...new Set(warnings)],
+    processSettings,
+    processWarnings: [...new Set(processWarnings)],
   };
 }
