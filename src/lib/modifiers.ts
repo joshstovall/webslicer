@@ -15,6 +15,8 @@ export interface WorldModifier {
   name: string;
   kind?: ModifierMesh["kind"];
   walls?: number;
+  topLayers?: number;
+  bottomLayers?: number;
   speedPercent?: number;
   flowPercent?: number;
   vertices: Float32Array;
@@ -45,9 +47,13 @@ export function validateModifiers(value: unknown): ModifierMesh[] | undefined {
           "support-blocker",
           "process",
           "walls",
+          "skins",
         ].includes(m.kind)) ||
       ((m.kind === "walls" || m.walls !== undefined) &&
         (!Number.isInteger(m.walls) || m.walls < 0 || m.walls > 20)) ||
+      [m.topLayers, m.bottomLayers].some(
+        (v) => v !== undefined && (!Number.isInteger(v) || v < 0 || v > 30),
+      ) ||
       [m.speedPercent, m.flowPercent].some(
         (v) =>
           v !== undefined &&
@@ -122,6 +128,8 @@ export function worldModifiers(model: Model): WorldModifier[] {
         name: m.name,
         kind: m.kind,
         walls: m.walls,
+        topLayers: m.topLayers,
+        bottomLayers: m.bottomLayers,
         speedPercent: m.speedPercent,
         flowPercent: m.flowPercent,
         vertices,

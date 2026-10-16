@@ -627,11 +627,13 @@ export function Viewport(props: ViewportProps) {
             ? 0x2dba81
             : modifier.kind === "support-blocker"
               ? 0xef5261
-              : modifier.kind === "walls"
-                ? "#3b82f6"
-                : modifier.kind === "process"
-                  ? 0x8b5cf6
-                  : 0xd48b20;
+              : modifier.kind === "skins"
+                ? 0x06b6d4
+                : modifier.kind === "walls"
+                  ? "#3b82f6"
+                  : modifier.kind === "process"
+                    ? 0x8b5cf6
+                    : 0xd48b20;
         const geometry = geometryOf(modifier.positions, false);
         const volume = new THREE.Mesh(
           geometry,

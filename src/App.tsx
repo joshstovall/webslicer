@@ -3189,8 +3189,8 @@ function App() {
                 shared. Cuts, splits, and height colors preserve painted
                 materials as linked solid parts. Paint supports independently
                 with enforce, block and restore tools. Object modifiers change
-                regional wall counts, infill, print speed, extrusion flow and
-                support contacts. STEP, resin slicing, and full Orca project
+                regional wall/skin counts, infill, print speed, extrusion flow
+                and support contacts. STEP, resin slicing, and full Orca project
                 settings are not supported. 3MF imports component geometry,
                 material assignments, and painted facets. Generated paths still
                 need printer-specific validation.

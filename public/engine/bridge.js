@@ -100,6 +100,15 @@ window.addEventListener("message", async (e) => {
               bounds,
             };
           });
+    const skinGeometry = new Map();
+    const skinPeer = (part) => {
+      if (!skinGeometry.has(part))
+        skinGeometry.set(part, {
+          name: part.name,
+          vertices: Array.from(part.vertices),
+        });
+      return skinGeometry.get(part);
+    };
     const widgets = parts.map((part, index) => {
       const id = part.assemblyId ?? `part-${index}`;
       if (!groups.has(id)) groups.set(id, []);
@@ -109,6 +118,19 @@ window.addEventListener("message", async (e) => {
       widget.meta.file = part.name;
       widget.anno.extruder = part.tool;
       widget.anno.stratumSupportPaint = part.supportPaintTriangles;
+      widget.anno.stratumSkinModifiers = part.modifiers
+        ?.filter(
+          (m) =>
+            m.kind === "skins" &&
+            (m.topLayers !== undefined || m.bottomLayers !== undefined),
+        )
+        .map((m) => ({ ...m, vertices: Array.from(m.vertices) }));
+      if (widget.anno.stratumSkinModifiers?.length && part.assemblyId)
+        widget.anno.stratumSkinPeers = parts
+          .filter(
+            (other) => other !== part && other.assemblyId === part.assemblyId,
+          )
+          .map(skinPeer);
       widget.anno.stratumWallModifiers = part.modifiers
         ?.filter((m) => m.kind === "walls")
         .map((m) => ({ ...m, vertices: Array.from(m.vertices) }));

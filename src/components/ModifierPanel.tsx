@@ -207,12 +207,18 @@ export function ModifierPanel({
                 { value: "support-blocker", label: "Block support contacts" },
                 { value: "process", label: "Print speed and flow" },
                 { value: "walls", label: "Wall count" },
+                { value: "skins", label: "Top and bottom skins" },
               ]}
               allowDeselect={false}
               onChange={(v) =>
                 v &&
                 update({
                   kind: v as ModifierMesh["kind"],
+                  ...(v === "skins" &&
+                  item.topLayers === undefined &&
+                  item.bottomLayers === undefined
+                    ? { topLayers: 5 }
+                    : {}),
                   ...(v === "walls" && item.walls === undefined
                     ? { walls: 4 }
                     : {}),
@@ -232,6 +238,48 @@ export function ModifierPanel({
                 Enable Automatic or Enforced only supports in print settings.
                 Green volumes enforce; red volumes block.
               </Text>
+            ) : item.kind === "skins" ? (
+              <>
+                <Text size="sm">
+                  Cyan volumes change solid layers near exposed top and bottom
+                  surfaces. Counts apply inside the volume at each layer. Zero
+                  removes that skin; infill keeps its own settings.
+                </Text>
+                {(["topLayers", "bottomLayers"] as const).map((key) => {
+                  const label = key === "topLayers" ? "Top" : "Bottom";
+                  return (
+                    <Stack gap="xs" key={key}>
+                      <Switch
+                        label={`Override ${label.toLowerCase()} skin layers`}
+                        checked={item[key] !== undefined}
+                        onChange={(e) =>
+                          update({
+                            [key]: e.currentTarget.checked ? 5 : undefined,
+                          })
+                        }
+                      />
+                      <NumberInput
+                        label={`Modifier ${label.toLowerCase()} skin layers`}
+                        min={0}
+                        max={30}
+                        allowDecimal={false}
+                        disabled={item[key] === undefined}
+                        value={item[key] ?? 5}
+                        onChange={(v) =>
+                          typeof v === "number" &&
+                          Number.isInteger(v) &&
+                          v >= 0 &&
+                          v <= 30 &&
+                          update({ [key]: v })
+                        }
+                      />
+                    </Stack>
+                  );
+                })}
+                <Text size="xs" c="dimmed">
+                  Later overrides win independently for top and bottom skins.
+                </Text>
+              </>
             ) : item.kind === "walls" ? (
               <>
                 <NumberInput

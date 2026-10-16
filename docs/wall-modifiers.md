@@ -22,4 +22,4 @@ Tests check real perimeter lengths against global-count references, hole walls, 
 
 Counts describe requested walls. Narrow geometry may fit fewer walls; native thin-wall behavior still applies. Sub-layer features can fall between sampling planes. Closed-volume validation, per-owner limits of 32 volumes and 500,000 combined triangles, and positive finite transforms apply as with other modifiers. Complex volumes and many distinct counts increase slicing work.
 
-Regional top/bottom skin-count overrides, direct modifier transform handles, branching tree supports and the broader slicer roadmap remain unfinished. Software verification does not establish physical print quality; Bambu/U1 print validation remains required.
+Regional top/bottom counts are available through the separate skin effect; see `skin-modifiers.md`. Direct modifier transform handles, branching tree supports and the broader slicer roadmap remain unfinished. Software verification does not establish physical print quality; Bambu/U1 print validation remains required.

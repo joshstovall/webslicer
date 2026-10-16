@@ -173,6 +173,13 @@ it("preserves disabled masks and world placement when cutting and grounding a mo
     kind: "walls",
     walls: 5,
   });
+  model.modifiers!.push({
+    ...modifier(),
+    id: "skins",
+    kind: "skins",
+    topLayers: 0,
+    bottomLayers: 7,
+  });
   const operation = {
     kind: "cut",
     height: 10,
@@ -189,7 +196,7 @@ it("preserves disabled masks and world placement when cutting and grounding a mo
   ]);
   expect(result).toHaveLength(2);
   for (const [i, m] of result.entries()) {
-    expect(m.modifiers).toHaveLength(4);
+    expect(m.modifiers).toHaveLength(5);
     expect(m.modifiers![0].kind).toBe("support-blocker");
     expect(m.modifiers![1].enabled).toBe(false);
     expect(m.modifiers![2]).toMatchObject({
@@ -198,6 +205,14 @@ it("preserves disabled masks and world placement when cutting and grounding a mo
       flowPercent: 125,
     });
     expect(m.modifiers![3]).toMatchObject({ kind: "walls", walls: 5 });
+    expect(m.modifiers![4]).toMatchObject({
+      kind: "skins",
+      topLayers: 0,
+      bottomLayers: 7,
+    });
+    const skinExpected = worldModifiers(model)[3].vertices.slice();
+    for (let j = 2; j < skinExpected.length; j += 3) skinExpected[j] -= i * 10;
+    close(worldModifiers(m)[3].vertices, skinExpected);
     const wallExpected = worldModifiers(model)[2].vertices.slice();
     for (let j = 2; j < wallExpected.length; j += 3) wallExpected[j] -= i * 10;
     close(worldModifiers(m)[2].vertices, wallExpected);

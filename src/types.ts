@@ -19,9 +19,13 @@ export interface ModifierMesh {
     | "support-enforcer"
     | "support-blocker"
     | "process"
-    | "walls";
+    | "walls"
+    | "skins";
   /** Required for wall modifiers; integer 0–20. */
   walls?: number;
+  /** Independent regional skin counts, from 0 to 30. */
+  topLayers?: number;
+  bottomLayers?: number;
   /** Independent overrides; undefined inherits the preceding volume or base process. */
   speedPercent?: number;
   flowPercent?: number;
