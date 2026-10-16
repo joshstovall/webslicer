@@ -168,7 +168,7 @@ export function SettingsPanel({
               {toggle(
                 "adaptive",
                 "Adaptive layer height",
-                "Vary layer heights to follow the model.",
+                "Vary layer heights together across all parts on the plate.",
               )}
               {s.adaptive &&
                 number(

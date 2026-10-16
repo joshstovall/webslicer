@@ -1,3 +1,4 @@
+import { planAdaptiveLayers } from "./layer-plan.js";
 // The engine lives in an isolated frame; removing it cancels all owned workers.
 let Engine, engineClient;
 let running = false;
@@ -44,7 +45,13 @@ window.addEventListener("message", async (e) => {
     });
     engine.setMode("FDM");
     engine.setController({ threaded: true, healMesh: true });
-    engine.setDevice(device).setProcess(process).setRender(false);
+    engine
+      .setDevice(device)
+      .setProcess({
+        ...process,
+        stratumLayerPlan: planAdaptiveLayers(parts, process),
+      })
+      .setRender(false);
     engine.setListener((msg) => {
       if (msg.slice?.error)
         send({ type: "error", message: String(msg.slice.error) });
