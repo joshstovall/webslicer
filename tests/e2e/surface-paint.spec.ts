@@ -10,10 +10,12 @@ for (const width of [1440, 390])
     await page.evaluate(async () => {
       const { primitive } = await import("/src/lib/geometry.ts");
       const { saveLocal } = await import("/src/lib/project.ts");
-      const { DEFAULT_SETTINGS, PRINTERS } =
-        await import("/src/lib/profiles.ts");
-      const { defaultFilament, DEFAULT_MULTI_MATERIAL } =
-        await import("/src/lib/multimaterial.ts");
+      const { DEFAULT_SETTINGS, PRINTERS } = await import(
+        "/src/lib/profiles.ts"
+      );
+      const { defaultFilament, DEFAULT_MULTI_MATERIAL } = await import(
+        "/src/lib/multimaterial.ts"
+      );
       const m = primitive("cube", 1);
       m.scale = [0.5, 0.5, 0.2];
       await saveLocal({
@@ -81,7 +83,20 @@ for (const width of [1440, 390])
         .click();
     }
     await expect(page.locator(".saved-indicator")).toContainText("Saved");
+    const storedPaint = () =>
+      page.evaluate(async () => {
+        const p = (await (await import("/src/lib/project.ts")).loadLocal())!;
+        const m = p.models[0];
+        return {
+          states: Array.from(m.faceTools ?? []),
+          positions: Array.from(m.paintTriangles ?? []),
+        };
+      });
+    const beforeReload = await storedPaint();
+    expect([...new Set(beforeReload.states)].sort()).toEqual([0, 1]);
     await page.reload();
+    await expect(page.locator(".saved-indicator")).toContainText("Saved");
+    expect(await storedPaint()).toEqual(beforeReload);
     await page
       .getByRole("button", { name: "Slice plate", exact: true })
       .click();

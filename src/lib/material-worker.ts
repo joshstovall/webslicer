@@ -30,7 +30,17 @@ self.onmessage = async (
       : prepareMaterialRegions(api, payload.parts, progress);
     self.postMessage(
       { parts },
-      { transfer: parts.map((p) => p.vertices.buffer as ArrayBuffer) },
+      {
+        transfer: parts.flatMap((p) => [
+          p.vertices.buffer as ArrayBuffer,
+          ...(p.supportPaint
+            ? [
+                p.supportPaint.positions.buffer as ArrayBuffer,
+                p.supportPaint.states.buffer as ArrayBuffer,
+              ]
+            : []),
+        ]),
+      },
     );
   } catch (error) {
     self.postMessage({

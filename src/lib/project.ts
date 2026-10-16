@@ -1,4 +1,5 @@
 import { validateModifiers } from "./modifiers";
+import { validateSupportPaint } from "./support-paint";
 import { validManualLayerSettings } from "./layer-height";
 import {
   validMaterialRequirements,
@@ -44,6 +45,12 @@ export function saveProject(p: Project) {
     models: p.models.map((m) => ({
       ...m,
       positions: Array.from(m.positions),
+      supportPaint: m.supportPaint
+        ? {
+            positions: Array.from(m.supportPaint.positions),
+            states: Array.from(m.supportPaint.states),
+          }
+        : undefined,
       modifiers: m.modifiers?.map((v) => ({
         ...v,
         positions: Array.from(v.positions),
@@ -105,6 +112,7 @@ export function validateProject(p: unknown): Project {
       name: String(m.name),
       positions: a,
       modifiers: validateModifiers(m.modifiers),
+      supportPaint: validateSupportPaint(m.supportPaint),
       tool: m.tool ?? 0,
       assemblyId:
         typeof m.assemblyId === "string" && m.assemblyId.length <= 128

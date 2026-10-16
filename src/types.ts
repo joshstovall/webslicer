@@ -1,4 +1,9 @@
 export type Vec3 = [number, number, number];
+export interface SupportPaint {
+  positions: Float32Array;
+  /** 0 = automatic, 1 = enforce, 2 = block, per surface triangle. */
+  states: Uint8Array;
+}
 export interface ModifierMesh {
   id: string;
   name: string;
@@ -33,6 +38,8 @@ export interface Model {
   paintTriangles?: Float32Array;
   /** Inward paint depth in world millimeters. */
   paintDepth?: number;
+  /** Independent surface tessellation; never changes filament colors or the solid. */
+  supportPaint?: SupportPaint;
   /** Ordered modifier volumes; later entries take priority. */
   modifiers?: ModifierMesh[];
 }

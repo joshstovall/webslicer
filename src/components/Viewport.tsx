@@ -239,6 +239,15 @@ export function Viewport(props: ViewportProps) {
         normal,
       );
       brushRing.scale.setScalar(p.paint.radius);
+      brushRing.material.color.set(
+        p.paint.target === "support"
+          ? p.paint.tool === 2
+            ? "#ef4056"
+            : p.paint.tool === 1
+              ? "#25c888"
+              : "#748078"
+          : "#293e24",
+      );
       brushRing.visible = p.paint.mode === "brush";
       dirty();
       if (!apply) return;
@@ -250,7 +259,10 @@ export function Viewport(props: ViewportProps) {
           point: hit.point.toArray() as Vec3,
           normal: normal.toArray() as Vec3,
           ...p.paint,
-          sourceTool: model.faceTools?.[hit.faceIndex ?? 0] ?? model.tool ?? 0,
+          sourceTool:
+            p.paint.target === "support"
+              ? (model.supportPaint?.states[hit.faceIndex ?? 0] ?? 0)
+              : (model.faceTools?.[hit.faceIndex ?? 0] ?? model.tool ?? 0),
         },
         firstDab,
       );
@@ -457,7 +469,15 @@ export function Viewport(props: ViewportProps) {
         (mesh.material as THREE.Material).dispose();
       }
     for (const [priority, m] of props.models.entries()) {
-      const surface = m.paintTriangles ?? m.positions;
+      const support =
+        props.tool === "paint" && props.paint?.target === "support";
+      const surface = support
+        ? (m.supportPaint?.positions ?? m.positions)
+        : (m.paintTriangles ?? m.positions);
+      const faceTools = support ? m.supportPaint?.states : m.faceTools;
+      const palette = support
+        ? [m.color, "#25c888", "#ef4056"]
+        : props.filamentColors;
       let mesh = s.models.children.find((c) => c.userData.id === m.id) as
         | THREE.Mesh
         | undefined;
@@ -491,24 +511,24 @@ export function Viewport(props: ViewportProps) {
       mesh.scale.set(...m.scale);
       mesh.visible = m.visible;
       const mat = mesh.material as THREE.MeshStandardMaterial;
-      if (m.faceTools) {
-        const paletteKey = props.filamentColors?.join(",");
+      if (faceTools) {
+        const paletteKey = palette?.join(",");
         if (
-          mesh.userData.faceTools !== m.faceTools ||
+          mesh.userData.faceTools !== faceTools ||
           mesh.userData.palette !== paletteKey ||
           !mesh.geometry.hasAttribute("color")
         ) {
           const colors = new Float32Array(surface.length),
             color = new THREE.Color();
-          for (let face = 0; face < m.faceTools.length; face++) {
-            color.set(props.filamentColors?.[m.faceTools[face]] ?? m.color);
+          for (let face = 0; face < faceTools.length; face++) {
+            color.set(palette?.[faceTools[face]] ?? m.color);
             for (let v = 0; v < 3; v++) color.toArray(colors, face * 9 + v * 3);
           }
           mesh.geometry.setAttribute(
             "color",
             new THREE.BufferAttribute(colors, 3),
           );
-          mesh.userData.faceTools = m.faceTools;
+          mesh.userData.faceTools = faceTools;
           mesh.userData.palette = paletteKey;
         }
         mat.color.set("#ffffff");
@@ -524,6 +544,8 @@ export function Viewport(props: ViewportProps) {
       mesh.updateMatrixWorld();
     }
     s.models.visible = !props.preview;
+    s.bed.visible = props.tool !== "paint";
+    s.orbit.maxPolarAngle = props.tool === "paint" ? Math.PI : Math.PI * 0.49;
     const selected = s.models.children.find(
       (m) => m.userData.id === props.selected && m.visible,
     );
@@ -578,6 +600,8 @@ export function Viewport(props: ViewportProps) {
     props.wireframe,
     props.transformWholeAssembly,
     props.modifierDraft,
+    props.paint?.target,
+    props.filamentColors,
   ]);
   useEffect(() => {
     const s = state.current;
@@ -736,13 +760,15 @@ export function Viewport(props: ViewportProps) {
           45,
         );
       const direction =
-        v === "top"
-          ? new THREE.Vector3(0, -0.001, 1)
-          : v === "front"
-            ? new THREE.Vector3(0, -1, 0.001)
-            : v === "right"
-              ? new THREE.Vector3(1, 0, 0.001)
-              : new THREE.Vector3(1, -1.3, 1);
+        v === "bottom"
+          ? new THREE.Vector3(0, -0.001, -1)
+          : v === "top"
+            ? new THREE.Vector3(0, -0.001, 1)
+            : v === "front"
+              ? new THREE.Vector3(0, -1, 0.001)
+              : v === "right"
+                ? new THREE.Vector3(1, 0, 0.001)
+                : new THREE.Vector3(1, -1.3, 1);
       s.orbit.target.copy(center);
       s.camera.position
         .copy(center)

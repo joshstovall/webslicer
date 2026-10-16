@@ -1,4 +1,5 @@
 import { transformModifierMeshes } from "./modifiers";
+import { transformSupportPaint } from "./support-paint";
 import * as THREE from "three";
 import type { Model, Vec3 } from "../types";
 import { boundsOf, matrixOf } from "./geometry";
@@ -56,6 +57,7 @@ export function updateAssembly(
         ...part,
         positions,
         paintTriangles,
+        supportPaint: transformSupportPaint(part.supportPaint, local),
         modifiers: transformModifierMeshes(part.modifiers, local),
         position: [...next.position],
         rotation: [...next.rotation],
@@ -109,6 +111,12 @@ export function assembleModels(models: Model[], name = "Assembly"): Model[] {
       assemblyId,
       positions,
       paintTriangles,
+      supportPaint: transformSupportPaint(
+        m.supportPaint,
+        new THREE.Matrix4()
+          .makeTranslation(-offset.x, -offset.y, -offset.z)
+          .multiply(matrix),
+      ),
       modifiers: transformModifierMeshes(
         m.modifiers,
         new THREE.Matrix4()

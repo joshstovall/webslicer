@@ -20,7 +20,7 @@ The incremental MIT-licensed worker patch is reproducible from release `e0dea91`
 
 ## Current bounds and remaining scope
 
-This editor implements **infill density and pattern** and **support-contact enforcer/blocker** modifiers (see `support-modifiers.md`). Per-region walls, top/bottom counts, speed/flow overrides, support painting and direct modifier transform gizmos remain unfinished parts of the broader slicer goal. Infill modifiers are incompatible with spiral vase mode and produce an explicit preflight error instead of being ignored.
+This editor implements **infill density and pattern** and **support-contact enforcer/blocker** modifiers (see `support-modifiers.md`). Per-region walls, top/bottom counts, speed/flow overrides and direct modifier transform gizmos remain unfinished parts of the broader slicer goal. Independent support surface painting is described in `support-paint.md`. Infill modifiers are incompatible with spiral vase mode and produce an explicit preflight error instead of being ignored.
 
 Each owner supports up to 32 modifier volumes with a combined 500,000 triangles. Coordinates and positive transforms must be finite, settings validated, and each enabled volume must be closed with positive volume. These limits bound imported data; complex geometry can still require substantial browser memory. An edit that consolidates masks beyond those per-part limits fails before replacing the original objects. Sub-layer details can disappear at the model's sampling planes. Imported textures/process settings and automatic orientation are not part of this implementation.
 

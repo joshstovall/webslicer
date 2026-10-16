@@ -108,6 +108,7 @@ window.addEventListener("message", async (e) => {
       widget.track.grid_id = index;
       widget.meta.file = part.name;
       widget.anno.extruder = part.tool;
+      widget.anno.stratumSupportPaint = part.supportPaintTriangles;
       const own = supportGeometry[index];
       const clearance =
         (process.sliceSupportExtra || 0) +

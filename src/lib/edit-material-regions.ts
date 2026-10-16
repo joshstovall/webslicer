@@ -1,4 +1,5 @@
 import type { Manifold, ManifoldToplevel } from "manifold-3d";
+import { supportPaintProjector } from "./reproject-support-paint";
 import {
   prepareMaterialRegions,
   type MaterialPart,
@@ -172,6 +173,17 @@ export function editMaterialRegions(
     }
     if (!output.length)
       throw new Error("The edit produced no printable material.");
+    for (const visible of [true, false]) {
+      const project = supportPaintProjector(
+        input
+          .filter((p) => (p.visible !== false) === visible)
+          .flatMap((p) => (p.supportPaint ? [p.supportPaint] : [])),
+      );
+      for (const part of output.filter(
+        (p) => (p.visible !== false) === visible,
+      ))
+        part.supportPaint = project(part.vertices);
+    }
     progress(1);
     return output;
   } finally {

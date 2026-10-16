@@ -99,7 +99,12 @@ export function modelVolume(m: Model) {
       6;
   return Math.abs(volume * m.scale[0] * m.scale[1] * m.scale[2]);
 }
-export function validatePlate(models: Model[], p: Printer, margin = 0) {
+export function validatePlate(
+  models: Model[],
+  p: Printer,
+  margin = 0,
+  allowElevated = false,
+) {
   const errors: string[] = [];
   const excluded = bedExclusions(p);
   const active = models.filter((m) => m.visible);
@@ -135,7 +140,7 @@ export function validatePlate(models: Model[], p: Printer, margin = 0) {
       errors.push(
         `${m.name} exceeds the printable area${margin ? " including adhesion clearance" : ""}.`,
       );
-    if (groups.get(m.assemblyId ?? m.id)!.min.z > 0.01)
+    if (!allowElevated && groups.get(m.assemblyId ?? m.id)!.min.z > 0.01)
       errors.push(`${m.name} is floating above the bed. Use “Drop to bed”.`);
   });
   for (let i = 0; i < active.length; i++)

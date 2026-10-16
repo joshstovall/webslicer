@@ -62,6 +62,12 @@ describe("geometry and plate operations", () => {
     expect(
       validatePlate([{ ...m, position: [0, 0, 2] }], printer)[0],
     ).toContain("floating");
+    expect(
+      validatePlate([{ ...m, position: [0, 0, 2] }], printer, 0, true),
+    ).toEqual([]);
+    expect(
+      validatePlate([{ ...m, position: [0, 0, -2] }], printer, 0, true)[0],
+    ).toContain("printable area");
     expect(validatePlate([m, { ...m, id: "other" }], printer)[0]).toContain(
       "overlap",
     );

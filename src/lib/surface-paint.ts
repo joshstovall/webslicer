@@ -9,6 +9,8 @@ export interface PaintStroke {
   radius: number;
   mode: PaintMode;
   sourceTool: number;
+  /** Boundary triangle size relative to brush radius; support paint uses finer detail. */
+  detail?: number;
 }
 /** Paint a separate surface tessellation, preserving the watertight source mesh. */
 export function paintSurface(
@@ -57,7 +59,7 @@ export function paintSurface(
     if (
       depth >= 9 ||
       Math.max(a.distanceTo(b), b.distanceTo(c), c.distanceTo(a)) <=
-        stroke.radius * 0.35
+        stroke.radius * (stroke.detail ?? 0.35)
     ) {
       const center = a
         .clone()

@@ -1,4 +1,5 @@
 /* Stratum support-contact modifiers. MIT license; see NOTICE.md. */
+import { supportPaintMasker } from "./support-paint.js";
 
 /** Modify contact seeds before downward projection, never sever finished columns.
  * A volume selects the upper layer's new underside at that layer's sampling plane.
@@ -10,9 +11,11 @@ export async function applySupportModifiers(
   api,
   peers = [],
   clearance = 0,
+  paint = [],
 ) {
-  if (!modifiers?.length && !peers.length) return;
+  if (!modifiers?.length && !peers.length && !paint.length) return;
   const { polygons: poly, point, slice: sliceMesh } = api;
+  const paintMasks = supportPaintMasker(paint, api);
   const prepare = (modifier) => {
     const points = [];
     let min = Infinity,
@@ -87,6 +90,47 @@ export async function applySupportModifiers(
         }
         const contact = poly.trimTo(underside, mask, { minArea: 0 });
         shadow = poly.union([...shadow, ...contact], 0, true);
+      }
+    }
+    // Surface paint overrides volume-selected contacts; automatic restores the volume result.
+    if (paint.length && contactZ !== undefined) {
+      const masks = paintMasks(layer.z, contactZ);
+      if (masks.enforce.length) {
+        if (!underside) {
+          underside = [];
+          poly.subtract(
+            layer.up.topPolys(),
+            layer.topPolys(),
+            underside,
+            null,
+            layer.z,
+            0,
+            { wasm: false },
+          );
+        }
+        shadow = poly.union(
+          [
+            ...shadow,
+            ...poly.trimTo(underside, poly.union(masks.enforce, 0, true), {
+              minArea: 0,
+            }),
+          ],
+          0,
+          true,
+        );
+      }
+      if (masks.block.length) {
+        const remaining = [];
+        poly.subtract(
+          shadow,
+          poly.union(masks.block, 0, true),
+          remaining,
+          null,
+          layer.z,
+          0,
+          { wasm: false },
+        );
+        shadow = remaining;
       }
     }
     if (layer.stratumSupportOccluders.length) {

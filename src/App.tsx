@@ -14,6 +14,7 @@ import { bindImportedMaterials } from "./lib/import-materials";
 import { editModelSelection } from "./lib/material-edits";
 import type { MaterialEdit } from "./lib/edit-material-regions";
 import { paintSurface, type PaintStroke } from "./lib/surface-paint";
+import { paintSupportSurface } from "./lib/support-paint";
 import { PaintPanel, type PaintSettings } from "./components/PaintPanel";
 import { AssemblyPanel } from "./components/AssemblyPanel";
 import { newId } from "./lib/id";
@@ -61,6 +62,7 @@ import {
   FilePlus2,
   FolderOpen,
   Grip,
+  GitBranch,
   HelpCircle,
   Layers3,
   LayoutGrid,
@@ -409,9 +411,13 @@ function App() {
   }
   function paintModel(id: string, stroke: PaintStroke, first: boolean) {
     const source = projectRef.current.models.find((m) => m.id === id);
-    if (!source || !filaments[stroke.tool]) return;
+    if (!source || (paint.target !== "support" && !filaments[stroke.tool]))
+      return;
     try {
-      const patch = paintSurface(source, stroke);
+      const patch =
+        paint.target === "support"
+          ? paintSupportSurface(source, stroke)
+          : paintSurface(source, stroke);
       commit(
         (p) => ({
           ...p,
@@ -425,10 +431,20 @@ function App() {
     }
   }
   function beginPainting() {
-    setPaint((p) => ({ ...p, tool: Math.min(p.tool, filaments.length - 1) }));
+    setPaint((p) => ({
+      ...p,
+      target: "material",
+      tool: Math.min(p.tool, filaments.length - 1),
+    }));
     setTool("paint");
     setMobilePanel(null);
     view("paint-fit");
+  }
+  function beginSupportPainting() {
+    setPaint((p) => ({ ...p, target: "support", tool: 1 }));
+    setTool("paint");
+    setMobilePanel(null);
+    view("paint-bottom");
   }
   function removeModel(id = selected) {
     const selectedModel = project.models.find((m) => m.id === id);
@@ -657,7 +673,12 @@ function App() {
         : s.adhesion === "skirt"
           ? s.skirtDistance + s.skirtLoops * s.lineWidth
           : 0;
-    const warnings = validatePlate(activeModels, project.printer, margin);
+    const warnings = validatePlate(
+      activeModels,
+      project.printer,
+      margin,
+      s.supports !== "disabled" && !s.vase,
+    );
     if (s.layerHeight > project.printer.nozzle * 0.8)
       warnings.push(
         "Layer height should not exceed 80% of the nozzle diameter.",
@@ -1379,6 +1400,13 @@ function App() {
                   Paint surfaces
                 </Menu.Item>
                 <Menu.Item
+                  disabled={busy}
+                  leftSection={<Paintbrush size={14} />}
+                  onClick={beginSupportPainting}
+                >
+                  Paint supports
+                </Menu.Item>
+                <Menu.Item
                   disabled={busy || filaments.length < 2}
                   onClick={() => {
                     const b = partsBounds(
@@ -1714,6 +1742,10 @@ function App() {
               filaments={filaments}
               settings={paint}
               onChange={setPaint}
+              supportMode={project.settings.supports}
+              onSupportMode={(supports) =>
+                commit((p) => ({ ...p, settings: { ...p.settings, supports } }))
+              }
               depth={
                 model.paintDepth ??
                 Math.max(
@@ -1723,7 +1755,11 @@ function App() {
               }
               onDepth={(paintDepth) => updateModel({ paintDepth })}
               onClear={() =>
-                updateModel({ faceTools: undefined, paintTriangles: undefined })
+                updateModel(
+                  paint.target === "support"
+                    ? { supportPaint: undefined }
+                    : { faceTools: undefined, paintTriangles: undefined },
+                )
               }
               onDone={() => setTool("select")}
             />
@@ -1821,11 +1857,19 @@ function App() {
               </IconButton>
               <IconButton
                 label="Paint surfaces"
-                active={tool === "paint"}
+                active={tool === "paint" && paint.target !== "support"}
                 onClick={beginPainting}
                 disabled={busy || !model || filaments.length < 2}
               >
                 <Paintbrush size={19} />
+              </IconButton>
+              <IconButton
+                label="Paint supports"
+                active={tool === "paint" && paint.target === "support"}
+                onClick={beginSupportPainting}
+                disabled={busy || !model}
+              >
+                <GitBranch size={19} />
               </IconButton>
               <span className="toolbar-divider" />
               <IconButton
@@ -3129,12 +3173,12 @@ function App() {
             </Tabs.Panel>
             <Tabs.Panel value="about" pt="md">
               <Text size="sm">
-                Multi-tool FDM slicing with automatic normal supports,
-                adaptive and manual variable layers, spiral vase, multiple
-                infill patterns, and skirt/brim/raft. Multiple objects and
-                plates, G-code inspection, and reusable print presets are
-                supported. Imported G-code previews include tool-colored arcs,
-                circles and helices.
+                Multi-tool FDM slicing with automatic normal supports, adaptive
+                and manual variable layers, spiral vase, multiple infill
+                patterns, and skirt/brim/raft. Multiple objects and plates,
+                G-code inspection, and reusable print presets are supported.
+                Imported G-code previews include tool-colored arcs, circles and
+                helices.
               </Text>
               <Text size="sm" mt="md">
                 Assign filament to each part, paint surfaces, or use Color by
@@ -3143,10 +3187,11 @@ function App() {
                 and filament details. Manage filaments sets cooling, fan start
                 layer, temperature and flow for each spool; bed temperature is
                 shared. Cuts, splits, and height colors preserve painted
-                materials as linked solid parts. Support painting, STEP, resin
-                slicing, and full Orca project settings are not supported. 3MF
-                imports component geometry, material assignments, and painted
-                facets. Generated paths still need printer-specific validation.
+                materials as linked solid parts. Paint supports independently
+                with enforce, block and restore tools. STEP, resin slicing, and
+                full Orca project settings are not supported. 3MF imports
+                component geometry, material assignments, and painted facets.
+                Generated paths still need printer-specific validation.
               </Text>
               <Text size="sm" mt="md">
                 <a

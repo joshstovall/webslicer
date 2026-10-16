@@ -1,4 +1,5 @@
 import type { Manifold, ManifoldToplevel } from "manifold-3d";
+import type { SupportPaint } from "../types";
 
 export interface MaterialPart {
   name: string;
@@ -10,8 +11,10 @@ export interface MaterialPart {
   paintVertices?: Float32Array;
   faceTools?: Uint8Array;
   paintDepth?: number;
+  supportPaint?: SupportPaint;
 }
 export interface PreparedPart {
+  supportPaint?: SupportPaint;
   name: string;
   sourceIds?: string[];
   visible?: boolean;

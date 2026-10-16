@@ -1,4 +1,6 @@
 import { transformModifierMeshes, validateModifiers } from "./modifiers";
+import { transformSupportPaint } from "./support-paint";
+import { Matrix4 } from "three";
 import { matrixOf } from "./geometry";
 import { newId } from "./id";
 import type { Model } from "../types";
@@ -61,6 +63,14 @@ export function modelsFromMaterialEdit(
           tool: part.tool,
           color: colors[part.tool] ?? sources[0].color,
           visible: part.visible !== false,
+          supportPaint: transformSupportPaint(
+            part.supportPaint,
+            new Matrix4().makeTranslation(
+              -(bounds.min.x + bounds.max.x) / 2,
+              -(bounds.min.y + bounds.max.y) / 2,
+              -bounds.min.z,
+            ),
+          ),
         };
       });
       group = assembleModels(group);
@@ -125,7 +135,7 @@ export async function editModelSelection(
   const sources = whole ? assemblyParts(models, selected) : [selected];
   let replacements: Model[];
   const simple = sources.every(
-    (m) => !m.faceTools && !m.modifiers?.length && m.visible,
+    (m) => !m.faceTools && !m.modifiers?.length && !m.supportPaint && m.visible,
   );
   if (operation.kind === "height" && simple) {
     const result = colorAboveHeight(

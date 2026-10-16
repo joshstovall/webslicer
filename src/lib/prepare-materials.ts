@@ -8,10 +8,12 @@ import {
 } from "./material-regions";
 import type { MaterialEdit, EditedPart } from "./edit-material-regions";
 import { worldModifiers, type WorldModifier } from "./modifiers";
+import { transformSupportPaint } from "./support-paint";
 export function worldMaterialParts(
   models: Model[],
   defaultDepth = 0.8,
   includeHidden = false,
+  supportAnnotations = true,
 ): MaterialPart[] {
   return models
     .filter((m) => includeHidden || m.visible)
@@ -37,6 +39,9 @@ export function worldMaterialParts(
         paintVertices,
         faceTools: m.faceTools?.slice(),
         paintDepth: m.paintDepth ?? defaultDepth,
+        supportPaint: supportAnnotations
+          ? transformSupportPaint(m.supportPaint, matrixOf(m))
+          : undefined,
       };
     });
 }
@@ -48,7 +53,7 @@ export async function prepareMaterials(
 ): Promise<PreparedPart[]> {
   if (signal.aborted)
     throw new DOMException("Slicing cancelled.", "AbortError");
-  const parts = worldMaterialParts(models, depth);
+  const parts = worldMaterialParts(models, depth, false, false);
   const modifiers = models.filter((m) => m.visible).flatMap(worldModifiers);
   if (!modifiers.length && !needsMaterialPreparation(parts)) return parts;
   return runMaterialWorker(parts, signal, onProgress, undefined, modifiers);
