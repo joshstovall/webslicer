@@ -11,6 +11,10 @@ export interface Model {
   plate: number;
   /** Zero-based filament slot; independent of the display color. */
   tool?: number;
+  /** Parts with this ID form one positioned object. */
+  assemblyId?: string;
+  /** Per-triangle material slots, when surface paint is present. */
+  faceTools?: Uint8Array;
 }
 export interface Filament {
   name: string;
@@ -27,6 +31,8 @@ export interface Filament {
 export interface MultiMaterialSettings {
   purgeTower: boolean;
   purgeVolume: number;
+  /** Directional overrides in mm³, keyed by zero-based "from:to" slots. */
+  purgeVolumes?: Record<string, number>;
   supportTool: number;
 }
 export interface Printer {
@@ -112,6 +118,7 @@ export interface ToolpathLayer {
   tools: Uint8Array;
 }
 export interface SliceResult {
+  source?: { file: File; printer?: Printer };
   gcode: string;
   layers: ToolpathLayer[];
   filament: number;

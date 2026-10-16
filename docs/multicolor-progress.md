@@ -16,8 +16,8 @@ User objective: **add full support for multi color printers, and add profiles fo
 
 ## Evidence
 
-- `npm test`: 29 core tests pass (geometry, project, G-code/material accounting, template interpreter and package integrity).
-- Full browser regression suite passed at 17 tests before the additional native package test was added.
+- `npm test`: 37 core tests pass (geometry/assemblies/height bands, project, G-code/material accounting, directional purge values, template interpreter and package integrity).
+- Full browser suite: 23 of 24 passed before the high-slot purge placement fix; the new high-slot test exposed an actual defect. After the fix all 12 affected engine/vendor/height/assembly tests passed. The other 12 tests had passed in that full run.
 - Vendor browser suite subsequently passed both tests: two-color slicing with all six real official profiles, and downloading/reopening a native Bambu package with PNG thumbnails and valid checksum.
 - Desktop and phone filament setup/assignment/persistence/color preview tests pass.
 - Production TypeScript/Vite build passes; rerun after final formatting or further changes as appropriate.
@@ -25,14 +25,14 @@ User objective: **add full support for multi color printers, and add profiles fo
 
 ## Remaining work for the full goal
 
-1. Preserve 3MF/OBJ multi-part assemblies, relative placement, imported material assignments and colors. `importModels` currently merges imported meshes, and `importFiles` auto-arranges/recolors them. This is a concrete gap, not a future wish-list item.
-2. Make assembly-aware transforms, packing, grounding, collision validation and multi-widget grouping consistent. Existing AABB overlap/floating checks reject legitimate interlocking or elevated colored parts.
-3. Complete and verify material editing workflows for full multi-color use (including height-based assignments and surface-color workflows where applicable); do not silently treat cosmetic model colors as print assignments. Review painted 3MF data handling explicitly instead of claiming it is supported.
-4. Verify dedicated support filament behavior with real support paths and multi-tool jobs. Review per-filament settings/global-settings interactions, physical material limits and cooling.
-5. Review purge planning: pairwise flush volumes, tower placement/capacity and build-volume checks, initial nonzero tools, unused slots, and larger AMS configurations. Current uniform purge volume drives both tower area and Bambu station purge, which is conservative but needs refinement.
-6. Complete native print metadata/preview fidelity. Imported print packages currently preserve filament colors but do not set a separate preview printer/build volume; inspect differing-printer imports. U1 metadata and firmware macro assumptions need a focused audit against official source.
+1. Preserve 3MF/OBJ multi-part assemblies, relative placement, imported material assignments and colors. Component import is now implemented and tested; vendor metadata/OBJ material-group coverage and painted triangles remain incomplete.
+2. Make assembly-aware transforms, packing, grounding, collision validation and multi-widget grouping consistent. Grouped transforms and packing are implemented and tested. Actual solid overlap resolution remains incomplete.
+3. Complete and verify material editing workflows for full multi-color use. Height assignments pass desktop/phone and actual slicing tests. Surface editing and painted 3MF segmentation remain incomplete; retained core triangle colors are explicitly blocked from slicing to prevent silent loss.
+4. Dedicated support filament now passes real normal/tree support path tests. Continue reviewing per-filament/global-settings interactions, physical material limits and cooling.
+5. Review purge planning: directional overrides, unused slots, initial nonzero tools and AMS slots 8/16 now pass tests; the block index placement defect is fixed. Crowded-plate placement, exact quantities/capacity and pair-specific tower extrusion still need refinement.
+6. Native Bambu package previews now use imported printer dimensions and preserve original archive downloads. External archive/multi-plate metadata handling and U1 firmware macro assumptions still need a focused audit.
 7. Audit printer-specific start/end/tool-change state restoration (XYZ/E/feed, retract, temperature), physical bounds, firmware variants, and loading/error/offline behavior. Do not infer full machine support just from valid templates or green tests.
-8. Update README/help and user-facing labels to reflect final behavior and actual limits. Existing help still contains outdated single-material/AMS limitations.
+8. README/help now describe current multi-tool behavior and unfinished features. Keep them aligned as the remaining features are implemented.
 9. Run relevant core/browser checks plus a production build under `/webslicer/`, verify desktop/phone renderings, then commit/push to `joshstovall/webslicer`, wait for GitHub Pages deployment and verify live workflows. Nothing from this goal has been pushed/deployed yet.
 10. Only mark the goal complete after auditing all requirements against current code/runtime evidence.
 
@@ -42,3 +42,40 @@ User objective: **add full support for multi color printers, and add profiles fo
 - Snapmaker OrcaSlicer revision `89311782298309040ee28b9a183f33f0f5477b15`, `resources/profiles/Snapmaker/machine/`.
 - GridSpace source revision `d138275bbe9d4e4030d8cb8b2dcf66607da9295a`; research copies in `/tmp/stratum-research`. Kiri's sample U1 device contains Bambu-style commands and must not be used as an authoritative U1 machine profile.
 - Research JSON/source files are in `/tmp/stratum-research`; vendored engine remains version 4.7.3. Preserve hashes in `vendor-manifest.json` whenever runtime bundles change.
+
+## Current continuation: assemblies, height colors, purge planning
+
+This section supersedes the older status of items 1–6 above; their remaining scope is still part of the goal.
+
+- Replaced merged 3MF imports with an assembly-aware loader. Production-extension component paths, path-scoped object IDs, unit conversion, mirrored winding, per-part transforms, Bambu part extruder metadata, and core material/color palettes are retained. Multipart OBJ meshes remain separate. Imported palette colors map into existing project slots without overwriting spools.
+- Assemblies share a pivot and transform/duplicate/pack/ground together. The inspector can toggle editing a single part. Whole-assembly plate moves and fit-to-bed use group bounds. The viewport applies the selected transform delta to sibling meshes while dragging. Tests cover relative transforms, rotations/nonuniform scale, duplication, imported placement and recovery. Actual overlapping solids are NOT yet resolved; same-assembly AABB collision exemptions permit legitimate interlocks but do not prove non-overlap.
+- Added Color by height with repeatable bands. Closed cut halves stay at their original coordinates, retain distinct filament IDs, and share an assembly. Desktop/phone browser tests save/reopen three bands and verify actual slice paths use tools 0, 1, 2 in the corresponding height ranges.
+- Dedicated support filament tests verify both normal/tree supports use tool 2, model paths use tool 1, and unused tool 0 is absent from filament usage. Engine-generated support object comments may contain `undefined`; executable commands do not.
+- Directional purge overrides are editable with from/to selectors on phones and desktops, validated and persisted. Bambu station commands use the directional volume. The tower conservatively reserves the maximum needed by active filaments; unused slots do not enlarge it. The tower itself is not yet optimized to each pair's exact volume.
+- Found and fixed a Kiri worker bug: purge-block XY offsets used the extruder ID, moving high-numbered AMS blocks off the bed. Placement now uses consecutive block indices while retaining actual tool IDs. NOTICE and vendor-manifest checksum updated. A regression slices X1C slots 8/16 and all four U1 heads; it failed before the fix and passed after.
+- Imported Bambu packages detect their printer for preview build-volume/filament diameter, retain filament metadata, and download the original archive unchanged. A browser regression reopens a P1S archive while a different printer is active and verifies byte-for-byte download preservation.
+- README/help reflect the current multi-tool features and remaining limits.
+
+### Still required after this continuation
+
+1. Surface paint editing and actual volumetric material segmentation; painted 3MF tree decoding. `faceTools` currently persists core triangle colors but slicing/cutting/splitting explicitly refuses those assignments. Assigning a part filament clears them. This is a temporary honest limitation, not completion of surface color support.
+2. Resolve actual intersecting material volumes in assemblies without double extrusion; further import tests for vendor project metadata and OBJ material groups, with no silent color loss. Core vertex-interpolated colors currently use the first vertex with a warning.
+3. Continue purge-tower placement/capacity work for crowded plates and validate produced purge quantities. Directional overrides and high slot IDs are now tested, but automatic tower relocation and exact pair-specific tower extrusion remain unfinished.
+4. Audit U1 firmware macros and all printer-specific XYZ/E/feed/retraction/temperature restoration, physical limits and offline/error handling. Existing tests prove software compilation and path/tool assignments, not physical printer compatibility.
+5. Finish native metadata fidelity for external archives and U1, including multi-plate package selection (the reader currently opens the first G-code entry).
+6. Final production-prefix/browser/rendering checks and deployment of the completed goal. Multi-color commits remain local; the live GitHub Pages app still reflects the original single-tool release.
+7. Completion remains unproven. Audit the entire original goal and the original numbered requirements before marking it complete.
+
+### Research for the next implementation step
+
+- Orca TriangleSelector serialization source was fetched to `/tmp/stratum-research/TriangleSelector.cpp` from `https://raw.githubusercontent.com/OrcaSlicer/OrcaSlicer/main/src/libslic3r/TriangleSelector.cpp`. Its nibble tree decoder and midpoint split ordering describe the painted-triangle format; do not silently ignore it or copy AGPL code without handling licensing.
+- Official Manifold WASM APIs: https://manifoldcad.org/docs/jsapi/classes/manifold.Mesh.html and https://manifoldcad.org/docs/jsapi/classes/manifold.Manifold.html . Closed boolean material regions could provide actual printable volumes for painted shells and intersecting assembly parts. The npm package query returned `manifold-3d` 3.5.4, Apache-2.0; it has NOT been installed yet. The existing Kiri internal Manifold WASM is not exposed as an app geometry API.
+
+### Final evidence for this checkpoint
+
+- 37 core tests pass.
+- All 12 affected slicing/assembly/height/vendor browser regressions pass after the purge block fix.
+- The production build succeeds with `VITE_BASE_PATH=/webslicer/`. Three production browser checks pass: desktop transforms/undo/redo, phone controls, and a complete multi-filament UI-to-G-code export using both tools and the purge tower. A separate bounded single-tool slicing check also passed under that prefix.
+- The production multi-filament test exposed Escape from the filament dialog also deselecting the model; global shortcuts now ignore events originating in a dialog. Its regression passes without reselecting the model as a workaround.
+- Vendor hashes match the manifest; `git diff --check` passes.
+- These results establish this checkpoint, not completion of the full goal. No goal update to complete and no Pages deployment has occurred.

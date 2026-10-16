@@ -49,6 +49,13 @@ for (const width of [1440, 390]) {
       .getByRole("textbox", { name: "Filament 2 temperature", exact: true })
       .fill("220");
     await page.keyboard.press("Tab");
+    await page
+      .getByRole("button", { name: "Directional purge volumes", exact: true })
+      .click();
+    await page
+      .getByRole("textbox", { name: "Purge for this change", exact: true })
+      .fill("240");
+    await page.keyboard.press("Tab");
     await page.keyboard.press("Escape");
     if (width < 761) {
       await page.keyboard.press("Escape");
@@ -69,6 +76,12 @@ for (const width of [1440, 390]) {
     if (width < 761) await page.keyboard.press("Escape");
     await expect(page.locator(".saved-indicator")).toContainText("Saved");
     await page.reload();
+    expect(
+      await page.evaluate(async () => {
+        const { loadLocal } = await import("/src/lib/project.ts");
+        return (await loadLocal())!.multiMaterial?.purgeVolumes?.["0:1"];
+      }),
+    ).toBe(240);
     await expect(
       page.getByRole("button", { name: "Slice plate", exact: true }),
     ).toBeEnabled();

@@ -216,3 +216,82 @@ test("multi-extruder engine retains non-contiguous tools and produces a purge to
   expect(result.gcode).toContain("T2");
   expect(result.gcode).not.toMatch(/NaN|undefined|Infinity/);
 });
+
+test("dedicated support filament is used only for supports and purge in normal and tree modes", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const result = await page.evaluate(async () => {
+    const geo = await import("/src/lib/geometry.ts");
+    const { slicePlate } = await import("/src/lib/slicer.ts");
+    const { DEFAULT_SETTINGS, PRINTERS } = await import("/src/lib/profiles.ts");
+    const { defaultFilament, DEFAULT_MULTI_MATERIAL } =
+      await import("/src/lib/multimaterial.ts");
+    const stem = geo.primitive("cube", 1),
+      top = geo.primitive("cube", 1);
+    stem.scale = [0.25, 0.4, 0.3];
+    top.scale = [1.1, 0.4, 0.15];
+    top.position = [0, 0, 5.9];
+    const model = {
+      ...stem,
+      tool: 1,
+      scale: [1, 1, 1],
+      positions: geo.mergedVertices([stem, top]),
+    };
+    const results = [];
+    for (const supports of ["auto", "tree"]) {
+      const settings = {
+        ...DEFAULT_SETTINGS,
+        supports,
+        adhesion: "none",
+        layerHeight: 0.25,
+        firstLayerHeight: 0.25,
+      };
+      const filaments = [0, 1, 2].map((i) => ({
+        ...defaultFilament(settings, i),
+        nozzleTemp: 210 + i * 5,
+        firstNozzleTemp: 210 + i * 5,
+      }));
+      const r = await slicePlate(
+        [model],
+        PRINTERS.find((p) => p.id === "generic-multi")!,
+        settings,
+        () => {},
+        new AbortController().signal,
+        filaments,
+        { ...DEFAULT_MULTI_MATERIAL, supportTool: 2, purgeVolume: 20 },
+      );
+      const supportTools = new Set<number>(),
+        modelTools = new Set<number>();
+      let supportSegments = 0;
+      for (const l of r.layers)
+        for (let i = 0; i < l.features.length; i++) {
+          if (l.features[i] === 3) {
+            supportTools.add(l.tools[i]);
+            supportSegments++;
+          } else if (l.features[i] !== 4 && l.features[i] !== 5)
+            modelTools.add(l.tools[i]);
+        }
+      results.push({
+        supports,
+        supportTools: [...supportTools],
+        modelTools: [...modelTools],
+        supportSegments,
+        used: r.tools.map((t) => t.tool),
+        hasSupportTool: r.gcode.includes("T2"),
+        invalid: r.gcode
+          .split("\n")
+          .filter((line) => /NaN|undefined|Infinity/.test(line.split(";")[0])),
+      });
+    }
+    return results;
+  });
+  for (const r of result) {
+    expect(r.supportSegments, r.supports).toBeGreaterThan(0);
+    expect(r.supportTools, r.supports).toEqual([2]);
+    expect(r.modelTools, r.supports).toEqual([1]);
+    expect(r.used, r.supports).toEqual([1, 2]);
+    expect(r.hasSupportTool).toBe(true);
+    expect(r.invalid).toEqual([]);
+  }
+});

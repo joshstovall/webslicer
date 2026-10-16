@@ -15,6 +15,7 @@ import {
   defaultFilament,
   DEFAULT_MULTI_MATERIAL,
   materialErrors,
+  maximumPurgeVolume,
 } from "./multimaterial";
 export function slicePlate(
   models: Model[],
@@ -115,6 +116,7 @@ export function slicePlate(
           .filter((m) => m.visible)
           .map((m) => ({
             name: m.name,
+            assemblyId: m.assemblyId,
             tool: m.tool ?? 0,
             vertices: mergedVertices([m]),
           }));
@@ -126,6 +128,15 @@ export function slicePlate(
             process: {
               ...processProfile(settings, {
                 ...multi,
+                purgeVolume: maximumPurgeVolume(multi, [
+                  ...new Set([
+                    ...parts.map((p) => p.tool),
+                    ...(settings.supports === "disabled"
+                      ? []
+                      : [multi.supportTool]),
+                  ]),
+                ]),
+                purgeVolumes: undefined,
                 supportTool:
                   settings.supports === "disabled"
                     ? parts[0].tool

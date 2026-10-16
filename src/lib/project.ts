@@ -1,7 +1,11 @@
 import { get, set } from "idb-keyval";
 import { strToU8, strFromU8, gzipSync, gunzipSync } from "fflate";
 import type { Project, Model } from "../types";
-import { defaultFilament, DEFAULT_MULTI_MATERIAL } from "./multimaterial";
+import {
+  defaultFilament,
+  DEFAULT_MULTI_MATERIAL,
+  validPurgeOverrides,
+} from "./multimaterial";
 import { DEFAULT_SETTINGS, PRINTERS } from "./profiles";
 const KEY = "stratum-project-v1";
 export async function saveLocal(p: Project) {
@@ -26,7 +30,11 @@ export function download(
 export function saveProject(p: Project) {
   const json = JSON.stringify({
     ...p,
-    models: p.models.map((m) => ({ ...m, positions: Array.from(m.positions) })),
+    models: p.models.map((m) => ({
+      ...m,
+      positions: Array.from(m.positions),
+      faceTools: m.faceTools ? Array.from(m.faceTools) : undefined,
+    })),
   });
   download(
     gzipSync(strToU8(json)) as Uint8Array<ArrayBuffer>,
@@ -79,6 +87,11 @@ export function validateProject(p: unknown): Project {
       name: String(m.name),
       positions: a,
       tool: m.tool ?? 0,
+      assemblyId:
+        typeof m.assemblyId === "string" && m.assemblyId.length <= 128
+          ? m.assemblyId
+          : undefined,
+      faceTools: m.faceTools ? new Uint8Array(m.faceTools) : undefined,
       color: /^#[a-f0-9]{6}$/i.test(m.color) ? m.color : "#91ad87",
     };
   });
@@ -104,6 +117,16 @@ export function validateProject(p: unknown): Project {
     v.settings.speed <= 0
   )
     throw new Error("Invalid layer height or print speed.");
+  for (const m of v.models) {
+    if (
+      m.faceTools &&
+      (m.faceTools.length !== m.positions.length / 9 ||
+        Array.from(m.faceTools).some(
+          (t) => !Number.isInteger(t) || t < 0 || t > 63,
+        ))
+    )
+      throw new Error("Invalid triangle material data.");
+  }
   const filaments = v.filaments ?? [defaultFilament(v.settings)];
   if (!Array.isArray(filaments) || !filaments.length || filaments.length > 64)
     throw new Error("Invalid filament list.");
@@ -131,9 +154,13 @@ export function validateProject(p: unknown): Project {
   for (const m of models)
     if (!Number.isInteger(m.tool) || m.tool < 0 || m.tool >= filaments.length)
       throw new Error("Invalid model filament assignment.");
+  for (const m of models)
+    if (m.faceTools?.some((t) => t >= filaments.length))
+      throw new Error("Invalid triangle filament assignment.");
   const multiMaterial = { ...DEFAULT_MULTI_MATERIAL, ...v.multiMaterial };
   if (
     !Number.isFinite(multiMaterial.purgeVolume) ||
+    !validPurgeOverrides(multiMaterial.purgeVolumes) ||
     multiMaterial.purgeVolume < 1 ||
     multiMaterial.purgeVolume > 2000 ||
     !Number.isInteger(multiMaterial.supportTool) ||

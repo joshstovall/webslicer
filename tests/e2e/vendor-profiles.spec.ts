@@ -122,14 +122,97 @@ test("Bambu download is a native print archive with thumbnails and can be reopen
   expect(Array.from(files["Metadata/plate_1.png"].slice(0, 8))).toEqual([
     137, 80, 78, 71, 13, 10, 26, 10,
   ]);
-  await page
-    .locator('input[type="file"]')
-    .first()
-    .setInputFiles({
-      name: download.suggestedFilename(),
-      mimeType: "application/octet-stream",
-      buffer: bytes,
-    });
+  // Reopen against a different active printer; preview metadata must come from the package.
+  await page.evaluate(async () => {
+    const { loadLocal, saveLocal } = await import("/src/lib/project.ts");
+    const { PRINTERS } = await import("/src/lib/profiles.ts");
+    const p = (await loadLocal())!;
+    await saveLocal({ ...p, printer: PRINTERS[0] });
+  });
+  await page.reload();
+  await page.locator('input[type="file"]').first().setInputFiles({
+    name: download.suggestedFilename(),
+    mimeType: "application/octet-stream",
+    buffer: bytes,
+  });
   await expect(page.locator(".preview-card-heading")).toContainText("layers");
+  await expect(page.locator(".preview-card-heading")).toContainText(
+    "Bambu Lab P1S",
+  );
   await expect(page.locator(".workspace-alert")).toHaveCount(0);
+  const original = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download original", exact: true })
+    .click();
+  const again = await original;
+  expect(await readFile((await again.path())!)).toEqual(bytes);
+});
+
+test("large AMS slot IDs and all four U1 heads compile with only assigned tools", async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await page.goto("/");
+  const results = await page.evaluate(async () => {
+    const { loadVendorPrinter, VENDOR_PRINTERS } =
+      await import("/src/lib/vendor-printers.ts");
+    const { primitive } = await import("/src/lib/geometry.ts");
+    const { slicePlate } = await import("/src/lib/slicer.ts");
+    const { DEFAULT_SETTINGS } = await import("/src/lib/profiles.ts");
+    const { defaultFilament, DEFAULT_MULTI_MATERIAL } =
+      await import("/src/lib/multimaterial.ts");
+    const output = [];
+    for (const id of ["bambu-x1c", "snapmaker-u1"]) {
+      const printer = await loadVendorPrinter(
+        VENDOR_PRINTERS.find((p) => p.id === id)!,
+      );
+      const tools = id === "bambu-x1c" ? [7, 15] : [0, 1, 2, 3];
+      const models = tools.map((tool, i) => ({
+        ...primitive("cube", 1),
+        tool,
+        scale: [0.2, 0.2, 0.05],
+        position: [-15 + i * 10, 0, 0],
+      }));
+      const filaments = Array.from({ length: printer.toolCount! }, (_, i) =>
+        defaultFilament(DEFAULT_SETTINGS, i),
+      );
+      const result = await slicePlate(
+        models,
+        printer,
+        { ...DEFAULT_SETTINGS, adhesion: "none" },
+        () => {},
+        new AbortController().signal,
+        filaments,
+        {
+          ...DEFAULT_MULTI_MATERIAL,
+          purgeVolume: 20,
+          purgeVolumes:
+            id === "bambu-x1c"
+              ? { "7:15": 30, "15:7": 25, "0:1": 2000 }
+              : { "0:1": 30, "1:0": 25 },
+        },
+      );
+      output.push({
+        id,
+        used: result.tools.map((t) => t.tool),
+        paths: [...new Set(result.layers.flatMap((l) => [...l.tools]))],
+        invalid: result.gcode
+          .split("\n")
+          .filter((line) =>
+            /NaN|Infinity|undefined|[{}]/.test(line.split(";")[0]),
+          ),
+        highSlot: result.gcode.includes("M620 S15A"),
+        changes: result.toolChanges,
+      });
+    }
+    return output;
+  });
+  expect(results[0].used).toEqual([7, 15]);
+  expect(results[0].highSlot).toBe(true);
+  expect(results[1].used).toEqual([0, 1, 2, 3]);
+  for (const r of results) {
+    expect(r.invalid).toEqual([]);
+    expect(r.paths.every((t) => r.used.includes(t))).toBe(true);
+    expect(r.changes).toBeGreaterThan(2);
+  }
 });

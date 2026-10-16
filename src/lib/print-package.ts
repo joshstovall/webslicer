@@ -2,6 +2,7 @@ import { zipSync, strToU8, unzipSync, strFromU8 } from "fflate";
 import type { Project, SliceResult, Printer, Filament } from "../types";
 import { DEFAULT_SETTINGS } from "./profiles";
 import { defaultFilament } from "./multimaterial";
+import { VENDOR_PRINTERS } from "./vendor-printers";
 
 // RFC 1321 MD5: the Bambu print container requires this checksum, not a security hash.
 export function md5(bytes: Uint8Array): string {
@@ -203,7 +204,7 @@ export function printThumbnail(
 }
 export function readPrintPackage(
   bytes: Uint8Array,
-): { gcode: string; filaments?: Filament[] } | null {
+): { gcode: string; filaments?: Filament[]; printer?: Printer } | null {
   let acceptedGcode = false;
   const files = unzipSync(bytes, {
     filter: (entry) => {
@@ -225,11 +226,24 @@ export function readPrintPackage(
     .sort()[0];
   if (!path) return null;
   let filaments: Filament[] | undefined;
+  let printer: Printer | undefined;
   if (files["Metadata/project_settings.config"]) {
     try {
       const data = JSON.parse(
         strFromU8(files["Metadata/project_settings.config"]),
       );
+      const preset = VENDOR_PRINTERS.find(
+        (p) => p.name.replace(" + AMS", "") === data.printer_model,
+      );
+      if (preset) {
+        printer = structuredClone(preset);
+        const nozzle = Number(data.nozzle_diameter?.[0]);
+        if (Number.isFinite(nozzle) && nozzle >= 0.1 && nozzle <= 2)
+          printer.nozzle = nozzle;
+        const diameter = Number(data.filament_diameter?.[0]);
+        if (Number.isFinite(diameter) && diameter >= 1 && diameter <= 4)
+          printer.filament = diameter;
+      }
       if (
         Array.isArray(data.filament_colour) &&
         data.filament_colour.length <= 64
@@ -267,5 +281,5 @@ export function readPrintPackage(
       /* Metadata is optional; the G-code remains viewable. */
     }
   }
-  return { gcode: strFromU8(files[path]), filaments };
+  return { gcode: strFromU8(files[path]), filaments, printer };
 }

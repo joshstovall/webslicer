@@ -1,5 +1,13 @@
+import {
+  assemblyParts,
+  duplicateAssembly,
+  updateAssembly,
+  partsBounds,
+} from "./lib/assemblies";
+import { bindImportedMaterials } from "./lib/import-materials";
+import { colorAboveHeight } from "./lib/height-colors";
 import { newId } from "./lib/id";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionIcon,
   Alert,
@@ -88,7 +96,7 @@ import {
   dimensions,
   exportSTL,
   groundModel,
-  importModels,
+  importModelFile,
   modelVolume,
   primitive,
   validatePlate,
@@ -161,6 +169,7 @@ function App() {
   const history = useRef<Project[]>([]),
     future = useRef<Project[]>([]);
   const [, setHistoryVersion] = useState(0);
+  const [transformWholeAssembly, setTransformWholeAssembly] = useState(true);
   const [tool, setTool] = useState<ViewTool>("select"),
     [preview, setPreview] = useState(false),
     [result, setResult] = useState<SliceResult | null>(null),
@@ -198,6 +207,7 @@ function App() {
       },
     );
   const [cutHeight, setCutHeight] = useState(20),
+    [heightTool, setHeightTool] = useState("1"),
     [cutKeep, setCutKeep] = useState("both"),
     [cutFlip, setCutFlip] = useState(true);
   const [connection, setConnection] = useState({
@@ -213,6 +223,18 @@ function App() {
     abortRef = useRef<AbortController | null>(null);
   const filaments = project.filaments ?? [defaultFilament(project.settings)];
   const multiMaterial = project.multiMaterial ?? DEFAULT_MULTI_MATERIAL;
+  const viewportPrinter =
+    preview && result?.source?.printer
+      ? result.source.printer
+      : project.printer;
+  const usedTools = useMemo(() => {
+    const tools = new Set<number>();
+    for (const model of project.models) {
+      tools.add(model.tool ?? 0);
+      if (model.faceTools) for (const tool of model.faceTools) tools.add(tool);
+    }
+    return [...tools];
+  }, [project.models]);
   const activeModels = project.models.filter(
       (m) => m.plate === project.activePlate,
     ),
@@ -314,40 +336,53 @@ function App() {
     return () => clearInterval(t);
   }, [playing, result]);
   function updateModel(patch: Partial<Model>, ground = false, id = selected) {
+    if (!id) return;
     commit((p) => ({
       ...p,
-      models: p.models.map((m) =>
-        m.id === id
-          ? ground
-            ? groundModel({ ...m, ...patch })
-            : { ...m, ...patch }
-          : m,
+      models: updateAssembly(
+        p.models,
+        id,
+        patch,
+        transformWholeAssembly,
+        ground,
       ),
     }));
   }
   function removeModel(id = selected) {
-    commit((p) => ({ ...p, models: p.models.filter((m) => m.id !== id) }));
+    const selectedModel = project.models.find((m) => m.id === id);
+    if (!selectedModel) return;
+    const ids = new Set(
+      (transformWholeAssembly
+        ? assemblyParts(project.models, selectedModel)
+        : [selectedModel]
+      ).map((m) => m.id),
+    );
+    commit((p) => ({ ...p, models: p.models.filter((m) => !ids.has(m.id)) }));
     setSelected(null);
   }
   function duplicate() {
     if (!model) return;
-    const n = {
-      ...model,
-      id: newId(),
-      name: `${model.name} copy`,
-      position: [
-        model.position[0] + size[0] + 8,
-        model.position[1],
-        model.position[2],
-      ] as Vec3,
-    };
-    commit((p) => ({ ...p, models: [...p.models, n] }));
-    setSelected(n.id);
+    const copies = duplicateAssembly(
+      project.models,
+      model,
+      transformWholeAssembly,
+    );
+    commit((p) => ({ ...p, models: [...p.models, ...copies] }));
+    setSelected(
+      copies.find((m) => m.name === `${model.name} copy`)?.id ?? copies[0].id,
+    );
   }
   function arrange() {
     try {
       const arranged = arrangeModels(
-        activeModels.filter((m) => m.visible),
+        activeModels.filter(
+          (m) =>
+            m.visible ||
+            (m.assemblyId &&
+              activeModels.some(
+                (n) => n.visible && n.assemblyId === m.assemblyId,
+              )),
+        ),
         project.printer,
       );
       commit((p) => ({
@@ -397,29 +432,33 @@ function App() {
             printPackage?.gcode ?? (await file.text()),
             {
               filaments: printPackage?.filaments,
-              diameter: project.printer.filament,
+              diameter:
+                printPackage?.printer?.filament ?? project.printer.filament,
               density: project.settings.density,
               cost: project.settings.cost,
             },
           );
           if (!parsed.layers.length)
             throw new Error("No extrusion paths found in this G-code.");
-          setResult(parsed);
+          setResult({
+            ...parsed,
+            source: { file, printer: printPackage?.printer },
+          });
           setLayer(parsed.layers.length - 1);
           setPreview(true);
           continue;
         }
         const targetPlate = projectRef.current.activePlate;
-        const added = await importModels(file, targetPlate);
+        const imported = await importModelFile(file, targetPlate);
         const p = projectRef.current;
+        const { models: added, filaments: importedFilaments } =
+          bindImportedMaterials(p, imported);
         if (!p.plates.includes(targetPlate)) {
           throw new Error(
             "The destination plate was removed while the model was loading.",
           );
         }
-        added.forEach(
-          (m, i) => (m.color = COLORS[(p.models.length + i) % COLORS.length]),
-        );
+        for (const warning of imported.warnings) notify(warning, "orange");
         const all = [
           ...p.models.filter((m) => m.plate === targetPlate),
           ...added,
@@ -435,6 +474,7 @@ function App() {
         }
         commit({
           ...p,
+          filaments: importedFilaments,
           models: [
             ...p.models.filter((m) => m.plate !== targetPlate),
             ...arranged,
@@ -518,6 +558,14 @@ function App() {
   }
   function exportGcode() {
     if (!result) return;
+    if (result.source) {
+      download(
+        result.source.file,
+        result.source.file.name,
+        result.source.file.type,
+      );
+      return;
+    }
     const name = `${project.name.replace(/[^a-z0-9-_ ]/gi, "")}_plate-${project.activePlate}`;
     if (project.printer.firmware === "bambu") {
       const images = {
@@ -558,18 +606,54 @@ function App() {
   }
   function fitToBed() {
     if (!model) return;
+    const parts = transformWholeAssembly
+      ? assemblyParts(activeModels, model)
+      : [model];
+    const bounds = partsBounds(parts);
+    const extent = [
+      bounds.max.x - bounds.min.x,
+      bounds.max.y - bounds.min.y,
+      bounds.max.z - bounds.min.z,
+    ];
     const factor = Math.min(
-      (project.printer.bed[0] - 20) / size[0],
-      (project.printer.bed[1] - 20) / size[1],
-      (project.printer.bed[2] - 5) / size[2],
+      (project.printer.bed[0] - 20) / extent[0],
+      (project.printer.bed[1] - 20) / extent[1],
+      (project.printer.bed[2] - 5) / extent[2],
     );
     updateModel(
       {
         scale: model.scale.map((n) => n * factor) as Vec3,
-        position: [0, 0, 0],
+        position: [
+          -((bounds.min.x + bounds.max.x) / 2 - model.position[0]) * factor,
+          -((bounds.min.y + bounds.max.y) / 2 - model.position[1]) * factor,
+          0,
+        ],
       },
       true,
     );
+  }
+  function applyHeightColor() {
+    if (!model) return;
+    try {
+      const slot = Number(heightTool),
+        filament = filaments[slot];
+      if (!filament) throw new Error("Choose a configured filament.");
+      const models = colorAboveHeight(
+        project.models,
+        model.id,
+        cutHeight,
+        slot,
+        filament.color,
+        transformWholeAssembly,
+      );
+      const ids = new Set(project.models.map((m) => m.id));
+      commit((p) => ({ ...p, models }));
+      setSelected(models.find((m) => !ids.has(m.id))?.id ?? model.id);
+      setModal(null);
+      notify("Height color applied. The parts remain linked in place.");
+    } catch (e) {
+      notify((e as Error).message, "red");
+    }
   }
   function cut() {
     if (!model) return;
@@ -616,6 +700,14 @@ function App() {
     const key = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (
+        e.defaultPrevented ||
+        e
+          .composedPath()
+          .some(
+            (node) =>
+              node instanceof HTMLElement &&
+              node.getAttribute("role") === "dialog",
+          ) ||
         el.matches("input,textarea,select") ||
         el.isContentEditable ||
         modal ||
@@ -879,6 +971,18 @@ function App() {
               </IconButton>
             </div>
           </div>
+          {model.assemblyId && (
+            <Switch
+              mb="sm"
+              size="xs"
+              label="Transform assembly"
+              description={`${assemblyParts(activeModels, model).length} linked parts`}
+              checked={transformWholeAssembly}
+              onChange={(e) =>
+                setTransformWholeAssembly(e.currentTarget.checked)
+              }
+            />
+          )}
           <TextInput
             aria-label="Object name"
             value={model.name}
@@ -989,6 +1093,7 @@ function App() {
                 updateModel({
                   tool: Number(v),
                   color: filaments[Number(v)].color,
+                  faceTools: undefined,
                 })
               }
             />
@@ -1017,7 +1122,9 @@ function App() {
                 style={{ background: color }}
                 onClick={() =>
                   updateModel(
-                    filaments.length > 1 ? { color, tool: index } : { color },
+                    filaments.length > 1
+                      ? { color, tool: index, faceTools: undefined }
+                      : { color },
                   )
                 }
                 disabled={busy}
@@ -1036,10 +1143,26 @@ function App() {
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item
+                  disabled={busy || filaments.length < 2}
+                  onClick={() => {
+                    const b = partsBounds(
+                      transformWholeAssembly
+                        ? assemblyParts(activeModels, model)
+                        : [model],
+                    );
+                    setCutHeight(Number(((b.min.z + b.max.z) / 2).toFixed(2)));
+                    setHeightTool(String((model.tool ?? 0) === 0 ? 1 : 0));
+                    setModal("height-color");
+                  }}
+                >
+                  Color by height
+                </Menu.Item>
+                <Menu.Item
                   disabled={busy}
                   leftSection={<Scissors size={14} />}
                   onClick={() => {
-                    setCutHeight(Number((size[2] / 2).toFixed(2)));
+                    const b = boundsOf(model);
+                    setCutHeight(Number(((b.min.z + b.max.z) / 2).toFixed(2)));
                     setModal("cut");
                   }}
                 >
@@ -1315,10 +1438,11 @@ function App() {
                 ? { ...m, color: filaments[m.tool ?? 0]?.color ?? m.color }
                 : m,
             )}
-            printer={project.printer}
+            printer={viewportPrinter}
             selected={selected}
             onSelect={setSelected}
             tool={busy ? "select" : tool}
+            transformWholeAssembly={transformWholeAssembly}
             onTransform={(id, patch) => updateModel(patch, true, id)}
             viewCommand={viewCommand}
             result={result}
@@ -1338,7 +1462,7 @@ function App() {
               <div>
                 <strong>Build plate {project.activePlate}</strong>
                 <span>
-                  {project.printer.bed[0]} × {project.printer.bed[1]} mm{" "}
+                  {viewportPrinter.bed[0]} × {viewportPrinter.bed[1]} mm{" "}
                   <i>·</i>{" "}
                   {preview ? "Toolpath preview" : "Textured build surface"}
                 </span>
@@ -1495,10 +1619,17 @@ function App() {
                     <Check size={15} />
                   </span>
                   <div>
-                    <strong>Ready, layer by layer.</strong>
+                    <strong>
+                      {result.source
+                        ? "Imported print preview"
+                        : "Ready, layer by layer."}
+                    </strong>
                     <span>
-                      {result.layers.length.toLocaleString()} layers · Plate{" "}
-                      {project.activePlate}
+                      {result.layers.length.toLocaleString()} layers ·{" "}
+                      {result.source
+                        ? (result.source.printer?.name ??
+                          result.source.file.name)
+                        : `Plate ${project.activePlate}`}
                     </span>
                   </div>
                 </div>
@@ -1795,9 +1926,11 @@ function App() {
                     onClick={exportGcode}
                     size="md"
                   >
-                    {project.printer.firmware === "bambu"
-                      ? "Export print 3MF"
-                      : "Export G-code"}
+                    {result.source
+                      ? "Download original"
+                      : project.printer.firmware === "bambu"
+                        ? "Export print 3MF"
+                        : "Export G-code"}
                   </Button>
                 </>
               ) : (
@@ -1907,7 +2040,7 @@ function App() {
           multi={multiMaterial}
           settings={project.settings}
           printer={project.printer}
-          usedTools={project.models.map((m) => m.tool ?? 0)}
+          usedTools={usedTools}
           onChange={(filaments, multiMaterial) =>
             commit((p) => ({
               ...p,
@@ -2121,6 +2254,41 @@ function App() {
         </Stack>
       </Modal>
       <Modal
+        opened={modal === "height-color"}
+        onClose={() => setModal(null)}
+        title="Color by height"
+      >
+        <Stack>
+          <Text size="sm" c="dimmed">
+            Assign a filament above a horizontal boundary. Parts stay aligned
+            and move together. Repeat to add more color bands.
+          </Text>
+          <NumberInput
+            label="Color boundary above bed"
+            suffix=" mm"
+            value={cutHeight}
+            onChange={(v) => typeof v === "number" && setCutHeight(v)}
+            min={0.01}
+            decimalScale={2}
+            step={project.settings.layerHeight}
+          />
+          <Select
+            label="Filament above boundary"
+            data={filaments.map((f, i) => ({
+              value: String(i),
+              label: `${i + 1}. ${f.name}`,
+            }))}
+            value={heightTool}
+            onChange={(v) => v !== null && setHeightTool(v)}
+            allowDeselect={false}
+          />
+          <Text size="xs" c="dimmed">
+            The printed transition follows the configured layer heights.
+          </Text>
+          <Button onClick={applyHeightColor}>Apply height color</Button>
+        </Stack>
+      </Modal>
+      <Modal
         opened={modal === "cut"}
         onClose={() => setModal(null)}
         title="Cut model horizontally"
@@ -2136,7 +2304,7 @@ function App() {
             value={cutHeight}
             onChange={(v) => typeof v === "number" && setCutHeight(v)}
             min={0.1}
-            max={Math.max(0.1, size[2] - 0.1)}
+            max={model ? boundsOf(model).max.z - 0.01 : undefined}
             step={1}
           />
           <Select
@@ -2456,17 +2624,19 @@ function App() {
             </Tabs.Panel>
             <Tabs.Panel value="about" pt="md">
               <Text size="sm">
-                Single-extruder FDM slicing with automatic normal/tree supports,
+                Multi-tool FDM slicing with automatic normal/tree supports,
                 adaptive layers, spiral vase, multiple infill patterns, and
                 skirt/brim/raft. Multiple objects and plates, G-code inspection,
                 and reusable print presets are supported.
               </Text>
               <Text size="sm" mt="md">
-                This is not OrcaSlicer. Multi-material painting, AMS
-                integration, organic support painting, STEP import, resin
-                slicing, and Orca-specific project settings are not supported.
-                3MF imports geometry. Generated paths still need
-                printer-specific validation.
+                Assign filament to each part, or use Color by height to create
+                linked bands. Bambu AMS and Snapmaker U1 profiles are available.
+                Surface painting, support painting, STEP, resin slicing, and
+                full Orca project settings are still being developed or
+                unsupported. 3MF imports component geometry and part material
+                assignments. Generated paths still need printer-specific
+                validation.
               </Text>
               <Text size="sm" mt="md">
                 <a

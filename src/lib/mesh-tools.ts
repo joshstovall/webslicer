@@ -31,7 +31,10 @@ export function cutModel(
   height: number,
   keep: string,
   groundUpper = true,
+  preservePlacement = false,
 ): Model[] {
+  if (model.faceTools)
+    throw new Error("Clear surface assignments before cutting this part.");
   const g = transformedGeometry(model),
     a = g.getAttribute("position");
   g.computeBoundingBox();
@@ -163,15 +166,25 @@ export function cutModel(
   });
   const results: Model[] = [];
   if (keep !== "upper")
-    results.push(worldModel(model, `${model.name} · lower`, lower, true));
+    results.push(
+      worldModel(model, `${model.name} · lower`, lower, !preservePlacement),
+    );
   if (keep !== "lower") {
-    let top = worldModel(model, `${model.name} · upper`, upper, true);
-    if (!groundUpper) top = groundModel({ ...top, rotation: [180, 0, 0] });
+    let top = worldModel(
+      model,
+      `${model.name} · upper`,
+      upper,
+      !preservePlacement,
+    );
+    if (!preservePlacement && !groundUpper)
+      top = groundModel({ ...top, rotation: [180, 0, 0] });
     results.push(top);
   }
   return results;
 }
 export function splitModel(model: Model): Model[] {
+  if (model.faceTools)
+    throw new Error("Clear surface assignments before splitting this part.");
   const g = transformedGeometry(model),
     a = g.getAttribute("position");
   const count = a.count / 3;

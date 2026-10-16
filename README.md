@@ -16,7 +16,7 @@ npm run build
 npm run preview
 ```
 
-Deploy the entire `dist/` folder. For a subdirectory, build with `VITE_BASE_PATH=/webslicer/ npm run build`. Preserve the `engine/` and `wasm/` folders and serve `.wasm` as `application/wasm`. No cross-origin isolation headers are required. All runtime assets, including fonts and the slicing engine, are local. Browser-local projects are tied to the origin: download a project file before changing hosts or clearing site data.
+Deploy the entire `dist/` folder. For a subdirectory, build with `VITE_BASE_PATH=/webslicer/ npm run build`. Preserve the `engine/` and `wasm/` folders and serve `.wasm` as `application/wasm`. No cross-origin isolation headers are required. Fonts and the slicing engine are bundled locally. Selecting a vendor printer initially fetches its pinned official G-code templates; saved projects retain those templates for later offline use. Browser-local projects are tied to the origin: download a project file before changing hosts or clearing site data.
 
 ## GitHub Pages
 
@@ -36,12 +36,13 @@ TEST_URL=http://localhost:4174/webslicer/ npm run test:e2e -- tests/e2e/workspac
 ## Features
 
 - Touch orbit, pinch zoom, and two-finger pan; desktop camera controls and keyboard shortcuts.
-- Import binary/ASCII STL, OBJ, and 3MF geometry; inspect imported linear G-code.
-- Select, rename, move, rotate, uniformly/nonuniformly scale, ground, fit to bed, and duplicate models.
+- Import binary/ASCII STL, multipart OBJ, and 3MF components with material assignments and relative transforms; inspect linear G-code and Bambu print packages.
+- Select, rename, move, rotate, uniformly/nonuniformly scale, ground, fit to bed, and duplicate models and linked assemblies. Assign filament by part or create linked color bands by height.
 - Cap horizontal cuts, split disconnected parts, and lay models on a side.
 - Arrange models, detect bounding-box collisions, check build-volume/adhesion clearance, and manage multiple build plates.
 - Starter calibration cube, cylinder, sphere, torus, and watertight hollow helix planter.
-- Printer dimensions, nozzle/filament sizes, editable start/end G-code, and PLA/PETG/ABS/ASA/TPU presets.
+- Printer dimensions, nozzle/filament sizes, editable machine G-code, per-filament settings, support filament, purge tower, directional purge volumes, and PLA/PETG/ABS/ASA/TPU presets.
+- Bambu X1 Carbon, P1S, P1P, A1 and A1 mini AMS profiles, plus the four-head Snapmaker U1 (0.4 mm variants). Bambu print packages include thumbnails and filament metadata.
 - Layer heights, adaptive layers, wall order, thin walls, seam placement, spiral vase, top/bottom layers, and six infill patterns.
 - Automatic normal/tree supports, support angle/density/separation, skirt/brim/raft, print/travel speeds, volumetric flow, temperature, cooling, retraction, Z hop, and flow ratio.
 - Real slicing with progress and cancellation. A job owns an isolated frame and its workers, all removed on cancellation/completion.
@@ -53,11 +54,11 @@ TEST_URL=http://localhost:4174/webslicer/ npm run test:e2e -- tests/e2e/workspac
 
 ## Printer setup and supported scope
 
-The included printer choices define build volumes and **generic Marlin-compatible** start/end sequences. Review those sequences for your exact firmware, leveling procedure, and machine. This software has been tested through browser-generated G-code, **not on physical printers**. Inspect toolpaths before printing. Motion-time estimates exclude heating and acceleration.
+Generic printer choices use **Marlin-compatible** start/end sequences. Bambu and Snapmaker presets load pinned official templates and use printer-specific adapters for multi-tool jobs. Review those sequences for your exact firmware, leveling procedure, and machine. This software has been tested through browser-generated G-code, **not on physical printers**. Inspect toolpaths before printing. Motion-time estimates exclude heating and acceleration.
 
-This is an independent single-extruder FDM slicer, not a port of the OrcaSlicer application or a claim of complete OrcaSlicer parity. Multi-material painting/AMS, modifier meshes, support painting, STEP import, resin slicing, and proprietary printer cloud integrations are not implemented. 3MF imports geometry, not Orca project settings. Imported G2/G3 arc moves are explicitly reported as unsupported by the linear viewer. The engine exports linear moves. Printer uploads require CORS and compatible HTTP/HTTPS connectivity.
+This is an independent FDM slicer. Multi-color support is in active development; see `docs/multicolor-progress.md` for the remaining implementation and validation work. Part assignments and height bands generate real tool changes. Surface painting, modifier meshes, support painting, STEP import, resin slicing, and proprietary printer cloud integrations remain unfinished. Painted 3MF trees are explicitly rejected; core per-triangle colors are retained but cannot yet be sliced. 3MF component geometry, part filament assignments, and filament palettes are imported; other Orca project process settings are not imported. Imported G2/G3 arc moves are explicitly reported as unsupported by the linear viewer. The engine exports linear moves. Printer uploads require CORS and compatible HTTP/HTTPS connectivity.
 
-Mesh files are assumed to use millimeters (3MF's declared units are honored by its loader). The basic collision check is conservative AABB overlap, so interlocking models may need separate plates. Cuts require closed, manifold contours. Import is limited to 100 MB; splitting is limited to 500,000 triangles and 200 parts. Complex models can consume significant browser memory.
+Mesh files are assumed to use millimeters (3MF's declared units are honored by its loader). Separate objects use conservative AABB collision checks. Linked assembly parts are allowed to touch or interlock; resolving actual overlapping material volumes still needs work. Cuts require closed, manifold contours. Import is limited to 100 MB; splitting is limited to 500,000 triangles and 200 parts. Complex models can consume significant browser memory.
 
 ## Tests
 
@@ -68,7 +69,7 @@ npm run build
 TEST_URL=http://localhost:5173 npm run test:e2e
 ```
 
-The Playwright suite uses the installed Chrome channel. Change `channel` in `playwright.config.ts` if using Playwright's bundled Chromium. The automated suite includes 18 core tests and 13 browser tests. Core tests cover geometry transforms, packing, bounds checks, STL round trips, hollow-mesh cuts, connected components, G-code interpretation, settings mapping, and project validation. Browser tests cover the real engine, downloads, cancellation, project recovery, desktop interactions, phone/tablet layouts, 3MF unit conversion, LAN origins, engine failure recovery, and mocked printer uploads.
+The Playwright suite uses the installed Chrome channel. Change `channel` in `playwright.config.ts` if using Playwright's bundled Chromium. The automated suite covers core geometry, material processing and persistence plus browser integration tests. Run it for the current counts and results. Core tests cover geometry transforms, packing, bounds checks, STL round trips, hollow-mesh cuts, connected components, G-code interpretation, settings mapping, and project validation. Browser tests cover the real engine, downloads, cancellation, project recovery, desktop interactions, phone/tablet layouts, 3MF unit conversion, LAN origins, engine failure recovery, and mocked printer uploads.
 
 ## Architecture
 

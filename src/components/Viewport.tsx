@@ -13,6 +13,7 @@ export interface ViewportProps {
   selected: string | null;
   onSelect: (id: string | null) => void;
   tool: ViewTool;
+  transformWholeAssembly?: boolean;
   onTransform: (id: string, patch: Partial<Model>) => void;
   viewCommand: { view: string; tick: number };
   result: SliceResult | null;
@@ -106,9 +107,52 @@ export function Viewport(props: ViewportProps) {
       needsRender = true;
     };
     orbit.addEventListener("change", dirty);
+    const dragMatrices = new Map<THREE.Object3D, THREE.Matrix4>();
+    let dragInverse = new THREE.Matrix4();
+    const updateSelection = (mesh: THREE.Object3D) => {
+      selection.box.setFromObject(mesh);
+      if (latest.current.transformWholeAssembly && mesh.userData.assemblyId)
+        for (const part of models.children)
+          if (part.userData.assemblyId === mesh.userData.assemblyId)
+            selection.box.union(new THREE.Box3().setFromObject(part));
+    };
     transform.addEventListener("change", () => {
       const mesh = transform.object;
-      if (mesh) selection.box.setFromObject(mesh);
+      if (mesh) updateSelection(mesh);
+      dirty();
+    });
+    transform.addEventListener("mouseDown", () => {
+      dragMatrices.clear();
+      const mesh = transform.object;
+      if (
+        !mesh ||
+        !latest.current.transformWholeAssembly ||
+        !mesh.userData.assemblyId
+      )
+        return;
+      mesh.updateMatrix();
+      dragInverse = mesh.matrix.clone().invert();
+      for (const part of models.children) {
+        if (
+          part !== mesh &&
+          part.userData.assemblyId === mesh.userData.assemblyId
+        ) {
+          part.updateMatrix();
+          dragMatrices.set(part, part.matrix.clone());
+        }
+      }
+    });
+    transform.addEventListener("objectChange", () => {
+      const mesh = transform.object;
+      if (!mesh) return;
+      mesh.updateMatrix();
+      const delta = mesh.matrix.clone().multiply(dragInverse);
+      for (const [part, original] of dragMatrices) {
+        part.matrixAutoUpdate = false;
+        part.matrix.copy(delta).multiply(original);
+        part.updateMatrixWorld(true);
+      }
+      updateSelection(mesh);
       dirty();
     });
     transform.addEventListener("dragging-changed", (e) => {
@@ -124,6 +168,7 @@ export function Viewport(props: ViewportProps) {
         ) as Vec3,
         scale: o.scale.toArray() as Vec3,
       });
+      dragMatrices.clear();
     });
     const raycaster = new THREE.Raycaster();
     let down = { x: 0, y: 0 };
@@ -306,6 +351,8 @@ export function Viewport(props: ViewportProps) {
         mesh.geometry = geometryOf(m.positions);
         mesh.userData.positions = m.positions;
       }
+      mesh.userData.assemblyId = m.assemblyId;
+      mesh.matrixAutoUpdate = true;
       mesh.position.set(...m.position);
       mesh.rotation.set(
         ...(m.rotation.map((n) => (n * Math.PI) / 180) as Vec3),
@@ -324,7 +371,13 @@ export function Viewport(props: ViewportProps) {
       (m) => m.userData.id === props.selected && m.visible,
     );
     s.selection.visible = !!selected && !props.preview;
-    if (selected) s.selection.box.setFromObject(selected);
+    if (selected) {
+      s.selection.box.setFromObject(selected);
+      if (props.transformWholeAssembly && selected.userData.assemblyId)
+        for (const part of s.models.children)
+          if (part.userData.assemblyId === selected.userData.assemblyId)
+            s.selection.box.union(new THREE.Box3().setFromObject(part));
+    }
     if (selected && props.tool !== "select" && !props.preview) {
       s.transform.setMode(props.tool);
       s.transform.attach(selected);
@@ -336,6 +389,7 @@ export function Viewport(props: ViewportProps) {
     props.tool,
     props.preview,
     props.wireframe,
+    props.transformWholeAssembly,
   ]);
   useEffect(() => {
     const s = state.current;

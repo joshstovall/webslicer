@@ -5,6 +5,7 @@ import type {
   MultiMaterialSettings,
 } from "../types";
 import { VENDOR_PRINTERS } from "./vendor-printers";
+import { maximumPurgeVolume } from "./multimaterial";
 const startGcode = `; Stratum / generic Marlin-compatible start\nG90\nM82\nM140 S{bed_temp}\nM104 S{temp}\nG28\nM190 S{bed_temp}\nM109 S{temp}\nG92 E0`;
 const endGcode = `M400\nG92 E0\nG1 E-1 F1800\nM104 S0\nM140 S0\nM107\nM84`;
 export const PRINTERS: Printer[] = [
@@ -160,7 +161,7 @@ export function processProfile(s: Settings, multi?: MultiMaterialSettings) {
   return {
     processName: "Stratum",
     outputPurgeTower: multi?.purgeTower
-      ? multi.purgeVolume / Math.min(s.layerHeight, s.firstLayerHeight)
+      ? maximumPurgeVolume(multi) / Math.min(s.layerHeight, s.firstLayerHeight)
       : 0,
     sliceSupportNozzle: multi?.supportTool ?? 0,
     sliceHeight: s.layerHeight,

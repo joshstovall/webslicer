@@ -131,3 +131,63 @@ describe("multi-material G-code", () => {
     ).toThrow("filament flow");
   });
 });
+
+import {
+  purgeVolumeFor,
+  maximumPurgeVolume,
+  validPurgeOverrides,
+} from "../src/lib/multimaterial";
+import { compileMachineGcode } from "../src/lib/machine-gcode";
+it("directional purge volumes remain asymmetric, exclude unused slots, and compile into machine changes", () => {
+  const multi = {
+    ...DEFAULT_MULTI_MATERIAL,
+    purgeVolume: 100,
+    purgeVolumes: { "0:1": 240, "1:0": 60, "2:1": 1900 },
+  };
+  expect(purgeVolumeFor(multi, 0, 1)).toBe(240);
+  expect(purgeVolumeFor(multi, 1, 0)).toBe(60);
+  expect(purgeVolumeFor(multi, 0, 0)).toBe(0);
+  expect(maximumPurgeVolume(multi, [0, 1])).toBe(240);
+  expect(maximumPurgeVolume(multi, [1])).toBe(0);
+  const machine = {
+    ...printer,
+    firmware: "bambu" as const,
+    startGcode: "G90\nM83",
+    endGcode: "M104 S0",
+    toolChangeGcode:
+      "; flush {previous_extruder}:{next_extruder} {flush_length}\nT{next_extruder}",
+  };
+  const planned =
+    ";STRATUM_INITIAL_TOOL:0\n;STRATUM_PRINT_BEGIN\n;LAYER:0\nG1 X10 Y10 Z0.2 F1200\nG1 X20 E1\n;STRATUM_TOOL_CHANGE:0:1\nT1\n;STRATUM_TOOL_READY\nG1 Y20 E1\n;STRATUM_TOOL_CHANGE:1:0\nT0\n;STRATUM_TOOL_READY\nG1 X10 E1\n;STRATUM_PRINT_END";
+  const output = compileMachineGcode(
+    planned,
+    machine,
+    DEFAULT_SETTINGS,
+    filaments,
+    multi,
+  );
+  const flushes = [...output.matchAll(/; flush (\d):(\d) ([\d.]+)/g)].map(
+    (m) => ({
+      from: +m[1],
+      to: +m[2],
+      volume: +m[3] * Math.PI * (printer.filament / 2) ** 2,
+    }),
+  );
+  expect(flushes).toEqual([
+    { from: 0, to: 1, volume: expect.closeTo(240, 2) },
+    { from: 1, to: 0, volume: expect.closeTo(60, 2) },
+  ]);
+});
+it("rejects malformed or out-of-range directional purge data", () => {
+  for (const overrides of [
+    [],
+    null,
+    { "64:1": 100 },
+    { "0:1": NaN },
+    { "0:1": 0 },
+    { "0:1": 2001 },
+    { typo: 100 },
+  ])
+    expect(validPurgeOverrides(overrides)).toBe(false);
+  expect(validPurgeOverrides({ "15:0": 350 })).toBe(true);
+});

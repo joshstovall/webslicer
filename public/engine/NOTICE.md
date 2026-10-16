@@ -15,3 +15,5 @@ to limit CPU/memory use on high-core devices. The worker and pool bundles also r
 
 Manifold: https://github.com/elalish/manifold (Apache-2.0).
 See /wasm/MANIFOLD-LICENSE.txt. Additional embedded dependencies retain their upstream notices at the ends of the JavaScript bundles. React, Mantine, Three.js, Lucide, fflate, idb-keyval, and fonts are distributed through their npm packages, which retain their respective licenses.
+
+Purge block placement patch: `mkrec` in the FDM preparation path now receives a separate consecutive `blockIndex` for its XY location. It continues to retain the actual extruder index for tool selection and nozzle properties. The original worker used the extruder ID as its physical block offset, pushing high-numbered AMS slots beyond the bed. The block index is retained when rebuilding a belt purge block. The integration regression covers slots 8 and 16 and all four U1 heads. This is a local modification to the MIT-licensed Kiri:Moto worker; its updated checksum is recorded in `vendor-manifest.json`.

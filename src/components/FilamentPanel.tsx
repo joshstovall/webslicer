@@ -11,13 +11,14 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
+import { useState } from "react";
 import type {
   Filament,
   MultiMaterialSettings,
   Printer,
   Settings,
 } from "../types";
-import { defaultFilament } from "../lib/multimaterial";
+import { defaultFilament, purgeVolumeFor } from "../lib/multimaterial";
 import { MATERIALS } from "../lib/profiles";
 interface Props {
   filaments: Filament[];
@@ -35,6 +36,11 @@ export function FilamentPanel({
   usedTools,
   onChange,
 }: Props) {
+  const [purgeFrom, setPurgeFrom] = useState("0"),
+    [purgeTo, setPurgeTo] = useState("1");
+  const from = Math.min(Number(purgeFrom), filaments.length - 1);
+  const to = Math.min(Number(purgeTo), filaments.length - 1);
+  const pair = `${from}:${to}`;
   const update = (index: number, patch: Partial<Filament>) =>
     onChange(
       filaments.map((f, i) => (i === index ? { ...f, ...patch } : f)),
@@ -201,7 +207,16 @@ export function FilamentPanel({
                     variant="subtle"
                     color="red"
                     disabled={usedTools.includes(i) || multi.supportTool === i}
-                    onClick={() => onChange(filaments.slice(0, -1), multi)}
+                    onClick={() =>
+                      onChange(filaments.slice(0, -1), {
+                        ...multi,
+                        purgeVolumes: Object.fromEntries(
+                          Object.entries(multi.purgeVolumes ?? {}).filter(
+                            ([key]) => !key.split(":").includes(String(i)),
+                          ),
+                        ),
+                      })
+                    }
                   >
                     Remove last filament
                   </Button>
@@ -250,19 +265,91 @@ export function FilamentPanel({
             }
           />
           {multi.purgeTower && (
-            <NumberInput
-              label="Purge volume per change"
-              value={multi.purgeVolume}
-              min={1}
-              max={2000}
-              suffix=" mm³"
-              onChange={(v) =>
-                typeof v === "number" &&
-                v >= 1 &&
-                v <= 2000 &&
-                onChange(filaments, { ...multi, purgeVolume: v })
-              }
-            />
+            <Stack gap="sm">
+              <NumberInput
+                label="Purge volume per change"
+                value={multi.purgeVolume}
+                min={1}
+                max={2000}
+                suffix=" mm³"
+                onChange={(v) =>
+                  typeof v === "number" &&
+                  v >= 1 &&
+                  v <= 2000 &&
+                  onChange(filaments, { ...multi, purgeVolume: v })
+                }
+              />
+              {filaments.length > 1 && (
+                <Accordion variant="contained">
+                  <Accordion.Item value="directional-purge">
+                    <Accordion.Control>
+                      Directional purge volumes
+                    </Accordion.Control>
+                    <Accordion.Panel>
+                      <Stack gap="sm">
+                        <Text size="xs" c="dimmed">
+                          Override individual changes in mm³. Bambu uses these
+                          volumes at its purge station. The tower reserves the
+                          largest volume needed by the active filaments.
+                        </Text>
+                        <Select
+                          label="Purge from filament"
+                          data={filaments.map((f, i) => ({
+                            value: String(i),
+                            label: `${i + 1}. ${f.name}`,
+                          }))}
+                          value={String(from)}
+                          onChange={(v) => v !== null && setPurgeFrom(v)}
+                          allowDeselect={false}
+                        />
+                        <Select
+                          label="Purge to filament"
+                          data={filaments.map((f, i) => ({
+                            value: String(i),
+                            label: `${i + 1}. ${f.name}`,
+                          }))}
+                          value={String(to)}
+                          onChange={(v) => v !== null && setPurgeTo(v)}
+                          allowDeselect={false}
+                        />
+                        <NumberInput
+                          label="Purge for this change"
+                          suffix=" mm³"
+                          disabled={from === to}
+                          value={purgeVolumeFor(multi, from, to)}
+                          min={1}
+                          max={2000}
+                          onChange={(v) =>
+                            typeof v === "number" &&
+                            v >= 1 &&
+                            v <= 2000 &&
+                            onChange(filaments, {
+                              ...multi,
+                              purgeVolumes: {
+                                ...multi.purgeVolumes,
+                                [pair]: v,
+                              },
+                            })
+                          }
+                        />
+                        <Button
+                          size="xs"
+                          variant="subtle"
+                          disabled={multi.purgeVolumes?.[pair] === undefined}
+                          onClick={() => {
+                            const purgeVolumes = { ...multi.purgeVolumes };
+                            delete purgeVolumes[pair];
+                            onChange(filaments, { ...multi, purgeVolumes });
+                          }}
+                        >
+                          Use default for this change
+                        </Button>
+                      </Stack>
+                    </Accordion.Panel>
+                  </Accordion.Item>
+                </Accordion>
+              )}
+            </Stack>
           )}
         </>
       )}

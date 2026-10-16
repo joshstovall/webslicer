@@ -62,9 +62,12 @@ window.addEventListener("message", async (e) => {
         });
     });
     // Preserve each part's tool assignment in a shared coordinate system.
+    const groups = new Map();
+    engine.settings.widget = {};
     const widgets = parts.map((part, index) => {
-      const widget =
-        index === 0 ? engine.widget : new engine.widget.constructor();
+      const id = part.assemblyId ?? `part-${index}`;
+      if (!groups.has(id)) groups.set(id, []);
+      const widget = new engine.widget.constructor(undefined, groups.get(id));
       widget.loadVertices(part.vertices);
       widget.track.grid_id = index;
       widget.meta.file = part.name;
