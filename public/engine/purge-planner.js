@@ -1,5 +1,10 @@
 // Stratum's bed-aware purge block placement. Coordinates are centered on the bed.
 // This module is independent of Kiri geometry classes so its packing can be tested directly.
+import {
+  buildPurgeFootprints,
+  outlineCollision,
+  placeOutlineBlocks,
+} from "./purge-footprints.js";
 const EPS = 1e-7;
 const overlapsX = (a, b) => a.minX < b.maxX - EPS && a.maxX > b.minX + EPS;
 const transpose = (r) => ({
@@ -47,6 +52,7 @@ export function placePurgeBlocks({
   obstacles,
   lineWidth,
   position,
+  outlines,
 }) {
   if (!count || !size) return [];
   if (
@@ -73,6 +79,7 @@ export function placePurgeBlocks({
     )
   )
     throw new Error("Invalid geometry bounds while placing the purge tower.");
+  const outline = outlines?.length ? outlineCollision(outlines) : undefined;
   if (position !== undefined) {
     if (
       !position ||
@@ -100,6 +107,7 @@ export function placePurgeBlocks({
           `Manual tower block ${i + 1} (${size.toFixed(1)} mm) is outside the usable bed. Move the tower center, change row direction, or use Automatic placement.`,
         );
       if (
+        outline?.hits(rect) ||
         obstacles.some(
           (r) =>
             overlapsX(rect, r) &&
@@ -113,6 +121,19 @@ export function placePurgeBlocks({
       placed.push({ x, y, z: 0 });
     }
     return placed;
+  }
+  if (outline) {
+    const placed = placeOutlineBlocks({
+      limits,
+      span,
+      count,
+      obstacles,
+      outline,
+    });
+    if (placed) return placed;
+    throw new Error(
+      `No room for ${count} purge ${count === 1 ? "block" : "blocks"} (${size.toFixed(1)} mm each) was found with model, support and adhesion clearance. Rearrange the plate or try a manual tower position.`,
+    );
   }
   for (const swap of [false, true])
     for (const reverse of [false, true]) {
@@ -163,7 +184,7 @@ export function placePurgeBlocks({
 }
 
 /** Use sliced supports as well as full-height model bounds, before path planning. */
-export function planKiriPurgeBlocks(widgets, settings, count) {
+export function planKiriPurgeBlocks(widgets, settings, count, outlines) {
   const { device, process } = settings;
   if (!process.outputPurgeTower || count < 1 || device.bedBelt) return null;
   const lineWidth = process.sliceLineWidth || device.extruders[0].extNozzle;
@@ -191,7 +212,7 @@ export function planKiriPurgeBlocks(widgets, settings, count) {
     };
     unique.set(JSON.stringify(rect), rect);
   }
-  for (const widget of widgets) {
+  for (const widget of outlines === undefined ? widgets : []) {
     const pos = widget.track.pos;
     const b = widget.bounds;
     const rect = { minX: b.min.x, maxX: b.max.x, minY: b.min.y, maxY: b.max.y };
@@ -263,6 +284,7 @@ export function planKiriPurgeBlocks(widgets, settings, count) {
       count,
       lineWidth,
       obstacles: [...unique.values()],
+      outlines,
       // Stored positions use emitted machine coordinates, including firmware
       // origin offsets (e.g. U1's +0.5/+1 mm). Packing uses centered bed XY.
       position:
@@ -281,6 +303,42 @@ export function planKiriPurgeBlocks(widgets, settings, count) {
             },
     }),
   };
+}
+
+/** Native preparation always supplies real geometry; rectangle-only utility callers retain their contract. */
+export async function planOutlinePurgeBlocks(
+  widgets,
+  settings,
+  count,
+  api,
+  adhesionLayers,
+  progress,
+) {
+  const { device, process } = settings;
+  if (!process.outputPurgeTower || count < 1 || device.bedBelt) return null;
+  const lineWidth = process.sliceLineWidth || device.extruders[0].extNozzle;
+  const adhesion = Math.max(
+    process.firstLayerBrim
+      ? process.firstLayerBrim + (process.firstLayerBrimGap || 0)
+      : 0,
+    process.outputBrimCount
+      ? (process.outputBrimOffset || 0) +
+          process.outputBrimCount * lineWidth +
+          2
+      : 0,
+    process.outputRaft
+      ? Math.max(process.outputBrimOffset || 4, 4) + lineWidth * 4
+      : 0,
+  );
+  const outlines = await buildPurgeFootprints(
+    widgets,
+    adhesion + lineWidth / 2 + 2,
+    lineWidth,
+    adhesionLayers,
+    api,
+    progress,
+  );
+  return planKiriPurgeBlocks(widgets, settings, count, outlines);
 }
 
 /** Independent tower paths. Priming is metered separately from structural paths.

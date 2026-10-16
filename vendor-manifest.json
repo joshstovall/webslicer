@@ -13,7 +13,7 @@
     {
       "path": "public/engine/kiri-work.js",
       "url": "https://grid.space/lib/pack/kiri-work.js",
-      "sha256": "eacaee1f3051e781714e61692f611a297125664ed599ca569cbe99f40271d2a3",
+      "sha256": "194e0cbdf3c1032ecc5c75a7b8701e500fa1e577125ca8047536154bf5f25e03",
       "modified": true
     },
     {
@@ -38,11 +38,11 @@
   "localSupportFiles": [
     {
       "path": "public/engine/purge-planner.js",
-      "sha256": "799701293d4cb5877ed804d4f3e301ab1d646b3461cf645780befb8372355b71"
+      "sha256": "7f1008f7cc14f624026174e454f05f718b3fd649272f273abebe2fa0c7feca27"
     },
     {
       "path": "public/engine/bridge.js",
-      "sha256": "6d28596eb226ad1318601df1d37d900b458626fa03e6c6e33d18d1f72af466a0"
+      "sha256": "0f57390efee3e25e356f06767b61d039a73bcf510c399a7a510f983e7562ba47"
     },
     {
       "path": "public/engine/bridge-cooling.js",
@@ -83,6 +83,10 @@
     {
       "path": "public/engine/support-interfaces.js",
       "sha256": "ebaf2e85f03bff02108c3bdacc149cf0e2723870115579f5f6f660f2f23998bb"
+    },
+    {
+      "path": "public/engine/purge-footprints.js",
+      "sha256": "9e019a0c56f552eb3378b10faaa4489ac5dc392e308fdac04b1ab8c40102a8a2"
     }
   ]
 }

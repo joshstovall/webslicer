@@ -67,7 +67,10 @@ window.addEventListener("message", async (e) => {
         send({
           type: "progress",
           progress: 0.8 + Number(msg.prepare.update || 0) * 0.15,
-          stage: "Planning toolpaths",
+          stage:
+            message === "purge footprints"
+              ? "Placing purge tower around outlines"
+              : "Planning toolpaths",
         });
     });
     // Preserve each part's tool assignment in a shared coordinate system.
@@ -212,7 +215,9 @@ window.addEventListener("message", async (e) => {
                 ? "Growing tree supports"
                 : message === "support interfaces"
                   ? "Filling support interfaces"
-                  : "Planning toolpaths",
+                  : message === "purge footprints"
+                    ? "Placing purge tower around outlines"
+                    : "Planning toolpaths",
           }),
         (result) =>
           result?.error ? reject(new Error(result.error)) : resolve(),

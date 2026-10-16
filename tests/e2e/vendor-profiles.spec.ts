@@ -256,11 +256,11 @@ test("large AMS slot IDs and all four U1 heads compile with only assigned tools"
   }
 });
 
-test("Bambu reserved bed areas also reject generated extrusion from direct slicing calls", async ({
+test("Bambu reserved bed areas reject model geometry and generated raft extrusion", async ({
   page,
 }) => {
   await page.goto("/");
-  const message = await page.evaluate(async () => {
+  const messages = await page.evaluate(async () => {
     const { loadVendorPrinter, VENDOR_PRINTERS } = await import(
       "/src/lib/vendor-printers.ts"
     );
@@ -270,25 +270,34 @@ test("Bambu reserved bed areas also reject generated extrusion from direct slici
     const printer = await loadVendorPrinter(
       VENDOR_PRINTERS.find((p) => p.id === "bambu-p1s")!,
     );
-    const model = {
-      ...primitive("cube", 1),
-      position: [-120, -120, 0],
-      scale: [0.2, 0.2, 0.05],
-    };
-    try {
-      await slicePlate(
-        [model],
-        printer,
-        { ...DEFAULT_SETTINGS, adhesion: "none" },
-        () => {},
-        new AbortController().signal,
-      );
-      return "";
-    } catch (e) {
-      return (e as Error).message;
+    const messages = [];
+    for (const raft of [false, true]) {
+      // The second model clears the reserved rectangle, but its generated raft
+      // extends back into it. This exercises the final extrusion audit too.
+      const model = {
+        ...primitive("cube", 1),
+        position: [raft ? -106 : -120, -118, 0],
+        scale: [0.2, 0.2, 0.05],
+      };
+      try {
+        await slicePlate(
+          [model],
+          printer,
+          { ...DEFAULT_SETTINGS, adhesion: raft ? "raft" : "none" },
+          () => {},
+          new AbortController().signal,
+        );
+        messages.push("");
+      } catch (e) {
+        messages.push((e as Error).message);
+      }
     }
+    return messages;
   });
-  expect(message).toContain("Generated extrusion enters a reserved bed area");
+  expect(messages[0]).toContain("overlaps a reserved bed area");
+  expect(messages[1]).toContain(
+    "Generated extrusion enters a reserved bed area",
+  );
   await expect(
     page.locator('iframe[title="Local slicing engine"]'),
   ).toHaveCount(0);
