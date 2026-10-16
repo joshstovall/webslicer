@@ -6,7 +6,7 @@ import type {
   Filament,
   MultiMaterialSettings,
 } from "../types";
-import { mergedVertices } from "./geometry";
+import { prepareMaterials } from "./prepare-materials";
 import { processProfile, deviceProfile } from "./profiles";
 import { compileMachineGcode } from "./machine-gcode";
 import { applyFilamentSettings } from "./filament-gcode";
@@ -17,7 +17,7 @@ import {
   materialErrors,
   maximumPurgeVolume,
 } from "./multimaterial";
-export function slicePlate(
+export async function slicePlate(
   models: Model[],
   printer: Printer,
   settings: Settings,
@@ -28,6 +28,13 @@ export function slicePlate(
 ): Promise<SliceResult> {
   const errors = materialErrors(models, printer, filaments, settings, multi);
   if (errors.length) return Promise.reject(new Error(errors.join("\n")));
+  const parts = await prepareMaterials(
+    models,
+    Math.max(settings.lineWidth * 2, settings.layerHeight * 3),
+    signal,
+    onProgress,
+  );
+  if (!parts.length) throw new Error("No printable material regions remain.");
   return new Promise((resolve, reject) => {
     const iframe = document.createElement("iframe");
     iframe.hidden = true;
@@ -112,14 +119,6 @@ export function slicePlate(
         return;
       const msg = e.data;
       if (msg.type === "ready") {
-        const parts = models
-          .filter((m) => m.visible)
-          .map((m) => ({
-            name: m.name,
-            assemblyId: m.assemblyId,
-            tool: m.tool ?? 0,
-            vertices: mergedVertices([m]),
-          }));
         iframe.contentWindow!.postMessage(
           {
             type: "slice",

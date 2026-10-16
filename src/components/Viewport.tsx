@@ -6,7 +6,9 @@ import type { Model, Printer, SliceResult, Vec3 } from "../types";
 import { FEATURE_COLORS } from "../types";
 import { geometryOf } from "../lib/geometry";
 import { Button, Alert } from "@mantine/core";
-export type ViewTool = "select" | "translate" | "rotate" | "scale";
+import type { PaintStroke } from "../lib/surface-paint";
+import type { PaintSettings } from "./PaintPanel";
+export type ViewTool = "select" | "translate" | "rotate" | "scale" | "paint";
 export interface ViewportProps {
   models: Model[];
   printer: Printer;
@@ -15,6 +17,9 @@ export interface ViewportProps {
   tool: ViewTool;
   transformWholeAssembly?: boolean;
   onTransform: (id: string, patch: Partial<Model>) => void;
+  paint?: PaintSettings;
+  filamentColors?: string[];
+  onPaint?: (id: string, stroke: PaintStroke, first: boolean) => void;
   viewCommand: { view: string; tick: number };
   result: SliceResult | null;
   preview: boolean;
@@ -171,11 +176,109 @@ export function Viewport(props: ViewportProps) {
       dragMatrices.clear();
     });
     const raycaster = new THREE.Raycaster();
+    const pointers = new Set<number>();
+    let painting = false,
+      firstDab = true,
+      multiTouch = false,
+      lastDab = 0;
+    const brushRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.96, 1, 48),
+      new THREE.MeshBasicMaterial({
+        color: "#293e24",
+        side: THREE.DoubleSide,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.8,
+      }),
+    );
+    brushRing.name = "paint-brush";
+    brushRing.visible = false;
+    brushRing.renderOrder = 10;
+    scene.add(brushRing);
+    function pick(e: PointerEvent) {
+      const r = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(
+        new THREE.Vector2(
+          ((e.clientX - r.left) / r.width) * 2 - 1,
+          -((e.clientY - r.top) / r.height) * 2 + 1,
+        ),
+        camera,
+      );
+      return raycaster
+        .intersectObjects(models.children)
+        .find((h) => h.object.visible);
+    }
+    function dab(e: PointerEvent, apply: boolean) {
+      const p = latest.current;
+      if (p.tool !== "paint" || p.preview || !p.paint) {
+        brushRing.visible = false;
+        return;
+      }
+      const hit = pick(e);
+      if (!hit?.face) {
+        brushRing.visible = false;
+        dirty();
+        return;
+      }
+      const normal = hit.face.normal
+        .clone()
+        .applyMatrix3(
+          new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld),
+        )
+        .normalize();
+      brushRing.position.copy(hit.point).addScaledVector(normal, 0.02);
+      brushRing.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 0, 1),
+        normal,
+      );
+      brushRing.scale.setScalar(p.paint.radius);
+      brushRing.visible = p.paint.mode === "brush";
+      dirty();
+      if (!apply) return;
+      const model = p.models.find((m) => m.id === hit.object.userData.id);
+      if (!model) return;
+      p.onPaint?.(
+        model.id,
+        {
+          point: hit.point.toArray() as Vec3,
+          normal: normal.toArray() as Vec3,
+          ...p.paint,
+          sourceTool: model.faceTools?.[hit.faceIndex ?? 0] ?? model.tool ?? 0,
+        },
+        firstDab,
+      );
+      firstDab = false;
+      lastDab = performance.now();
+    }
     let down = { x: 0, y: 0 };
     const pointerDown = (e: PointerEvent) => {
       down = { x: e.clientX, y: e.clientY };
+      pointers.add(e.pointerId);
+      if (pointers.size > 1) {
+        multiTouch = true;
+        painting = false;
+        return;
+      }
+      multiTouch = false;
+      firstDab = true;
+      painting = latest.current.tool === "paint" && e.button === 0;
+      if (painting) {
+        renderer.domElement.setPointerCapture(e.pointerId);
+        if (e.pointerType !== "touch") dab(e, true);
+      }
+    };
+    const pointerMove = (e: PointerEvent) => {
+      if (pointers.size > 1 || multiTouch) return;
+      dab(e, painting && performance.now() - lastDab > 80);
     };
     const pointerUp = (e: PointerEvent) => {
+      pointers.delete(e.pointerId);
+      if (latest.current.tool === "paint") {
+        if (painting && !multiTouch) dab(e, firstDab);
+        painting = false;
+        if (!pointers.size) multiTouch = false;
+        return;
+      }
       if (
         latest.current.preview ||
         transform.dragging ||
@@ -198,11 +301,25 @@ export function Viewport(props: ViewportProps) {
     };
     renderer.domElement.addEventListener("pointerdown", pointerDown);
     renderer.domElement.addEventListener("pointerup", pointerUp);
+    renderer.domElement.addEventListener("pointermove", pointerMove);
+    renderer.domElement.addEventListener("pointercancel", (e) => {
+      pointers.delete(e.pointerId);
+      painting = false;
+      brushRing.visible = false;
+      dirty();
+    });
+    renderer.domElement.addEventListener("pointerleave", () => {
+      brushRing.visible = false;
+      dirty();
+    });
     const resize = new ResizeObserver(() => {
       const w = node.clientWidth,
         h = node.clientHeight;
       renderer.setSize(w, h);
       camera.aspect = w / h;
+      if (latest.current.tool === "paint" && w < 761)
+        camera.setViewOffset(w, h, 0, -h * 0.18, w, h);
+      else camera.clearViewOffset();
       camera.updateProjectionMatrix();
       dirty();
     });
@@ -330,11 +447,12 @@ export function Viewport(props: ViewportProps) {
         (mesh.material as THREE.Material).dispose();
       }
     for (const m of props.models) {
+      const surface = m.paintTriangles ?? m.positions;
       let mesh = s.models.children.find((c) => c.userData.id === m.id) as
         THREE.Mesh | undefined;
       if (!mesh) {
         mesh = new THREE.Mesh(
-          geometryOf(m.positions),
+          geometryOf(surface),
           new THREE.MeshStandardMaterial({
             color: m.color,
             roughness: 0.58,
@@ -342,14 +460,14 @@ export function Viewport(props: ViewportProps) {
             side: THREE.DoubleSide,
           }),
         );
-        mesh.userData = { id: m.id, positions: m.positions };
+        mesh.userData = { id: m.id, positions: surface };
         mesh.castShadow = true;
         mesh.receiveShadow = false;
         s.models.add(mesh);
-      } else if (mesh.userData.positions !== m.positions) {
+      } else if (mesh.userData.positions !== surface) {
         mesh.geometry.dispose();
-        mesh.geometry = geometryOf(m.positions);
-        mesh.userData.positions = m.positions;
+        mesh.geometry = geometryOf(surface);
+        mesh.userData.positions = surface;
       }
       mesh.userData.assemblyId = m.assemblyId;
       mesh.matrixAutoUpdate = true;
@@ -360,7 +478,33 @@ export function Viewport(props: ViewportProps) {
       mesh.scale.set(...m.scale);
       mesh.visible = m.visible;
       const mat = mesh.material as THREE.MeshStandardMaterial;
-      mat.color.set(m.color);
+      if (m.faceTools) {
+        const paletteKey = props.filamentColors?.join(",");
+        if (
+          mesh.userData.faceTools !== m.faceTools ||
+          mesh.userData.palette !== paletteKey ||
+          !mesh.geometry.hasAttribute("color")
+        ) {
+          const colors = new Float32Array(surface.length),
+            color = new THREE.Color();
+          for (let face = 0; face < m.faceTools.length; face++) {
+            color.set(props.filamentColors?.[m.faceTools[face]] ?? m.color);
+            for (let v = 0; v < 3; v++) color.toArray(colors, face * 9 + v * 3);
+          }
+          mesh.geometry.setAttribute(
+            "color",
+            new THREE.BufferAttribute(colors, 3),
+          );
+          mesh.userData.faceTools = m.faceTools;
+          mesh.userData.palette = paletteKey;
+        }
+        mat.color.set("#ffffff");
+        mat.vertexColors = true;
+      } else {
+        mat.color.set(m.color);
+        mat.vertexColors = false;
+      }
+      mat.needsUpdate = true;
       mat.wireframe = props.wireframe;
       mat.emissive.set(m.id === props.selected ? "#172315" : "#000000");
       mat.emissiveIntensity = 0.15;
@@ -378,10 +522,31 @@ export function Viewport(props: ViewportProps) {
           if (part.userData.assemblyId === selected.userData.assemblyId)
             s.selection.box.union(new THREE.Box3().setFromObject(part));
     }
-    if (selected && props.tool !== "select" && !props.preview) {
+    if (
+      selected &&
+      props.tool !== "select" &&
+      props.tool !== "paint" &&
+      !props.preview
+    ) {
       s.transform.setMode(props.tool);
       s.transform.attach(selected);
     } else s.transform.detach();
+    s.orbit.mouseButtons.LEFT =
+      props.tool === "paint" ? null : THREE.MOUSE.ROTATE;
+    s.orbit.mouseButtons.RIGHT =
+      props.tool === "paint" ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
+    s.orbit.touches.ONE = props.tool === "paint" ? null : THREE.TOUCH.ROTATE;
+    s.orbit.touches.TWO =
+      props.tool === "paint" ? THREE.TOUCH.DOLLY_ROTATE : THREE.TOUCH.DOLLY_PAN;
+    s.renderer.domElement.style.cursor =
+      props.tool === "paint" ? "crosshair" : "";
+    const width = host.current!.clientWidth,
+      height = host.current!.clientHeight;
+    if (props.tool === "paint" && width < 761)
+      s.camera.setViewOffset(width, height, 0, -height * 0.18, width, height);
+    else s.camera.clearViewOffset();
+    if (props.tool !== "paint")
+      s.scene.getObjectByName("paint-brush")!.visible = false;
     s.dirty();
   }, [
     props.models,
@@ -466,7 +631,34 @@ export function Viewport(props: ViewportProps) {
     const s = state.current;
     if (!s) return;
     const radius = Math.max(...props.printer.bed) * 1.8;
-    const v = props.viewCommand.view;
+    const paintView = props.viewCommand.view.startsWith("paint-");
+    const v = props.viewCommand.view.replace(/^paint-/, "");
+    if (paintView) {
+      const selected = s.models.children.find(
+        (m) => m.userData.id === props.selected,
+      );
+      const box = new THREE.Box3().setFromObject(selected ?? s.models);
+      const center = box.getCenter(new THREE.Vector3()),
+        distance = Math.max(
+          box.getSize(new THREE.Vector3()).length() * 2.5,
+          45,
+        );
+      const direction =
+        v === "top"
+          ? new THREE.Vector3(0, -0.001, 1)
+          : v === "front"
+            ? new THREE.Vector3(0, -1, 0.001)
+            : v === "right"
+              ? new THREE.Vector3(1, 0, 0.001)
+              : new THREE.Vector3(1, -1.3, 1);
+      s.orbit.target.copy(center);
+      s.camera.position
+        .copy(center)
+        .add(direction.normalize().multiplyScalar(distance));
+      s.orbit.update();
+      s.dirty();
+      return;
+    }
     s.orbit.target.set(0, 0, 25);
     if (v === "top") s.camera.position.set(0, -0.01, radius);
     else if (v === "front") s.camera.position.set(0, -radius, 26);

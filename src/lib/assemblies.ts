@@ -44,9 +44,17 @@ export function updateAssembly(
         point = new THREE.Vector3();
       for (let i = 0; i < positions.length; i += 3)
         point.fromArray(positions, i).applyMatrix4(local).toArray(positions, i);
+      const paintTriangles = part.paintTriangles?.slice();
+      if (paintTriangles)
+        for (let i = 0; i < paintTriangles.length; i += 3)
+          point
+            .fromArray(paintTriangles, i)
+            .applyMatrix4(local)
+            .toArray(paintTriangles, i);
       replacements.set(part.id, {
         ...part,
         positions,
+        paintTriangles,
         position: [...next.position],
         rotation: [...next.rotation],
         scale: [...next.scale],
@@ -85,11 +93,20 @@ export function assembleModels(models: Model[], name = "Assembly"): Model[] {
         .applyMatrix4(matrix)
         .sub(offset)
         .toArray(positions, i);
+    const paintTriangles = m.paintTriangles?.slice();
+    if (paintTriangles)
+      for (let i = 0; i < paintTriangles.length; i += 3)
+        point
+          .fromArray(paintTriangles, i)
+          .applyMatrix4(matrix)
+          .sub(offset)
+          .toArray(paintTriangles, i);
     return {
       ...m,
       name: m.name || name,
       assemblyId,
       positions,
+      paintTriangles,
       position: offset.toArray() as Vec3,
       rotation: [0, 0, 0] as Vec3,
       scale: [1, 1, 1] as Vec3,

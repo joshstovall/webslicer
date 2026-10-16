@@ -15,6 +15,10 @@ export interface Model {
   assemblyId?: string;
   /** Per-triangle material slots, when surface paint is present. */
   faceTools?: Uint8Array;
+  /** Optional subdivided surface for painting; the original closed solid stays intact. */
+  paintTriangles?: Float32Array;
+  /** Inward paint depth in world millimeters. */
+  paintDepth?: number;
 }
 export interface Filament {
   name: string;

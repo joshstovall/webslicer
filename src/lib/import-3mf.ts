@@ -2,6 +2,7 @@ import { unzipSync, strFromU8 } from "fflate";
 import * as THREE from "three";
 import { newId } from "./id";
 import type { Model, Vec3 } from "../types";
+import { decodePaintTriangle, type PaintedTriangle } from "./paint-codec";
 
 export interface ImportedMaterial {
   name: string;
@@ -261,6 +262,8 @@ export function import3mf(
       const positions = new Float32Array(faces.length * 9),
         faceTools = new Uint8Array(faces.length);
       let painted = false;
+      let surfaceTriangles: number[] | undefined,
+        surfaceTools: number[] = [];
       const resources = child(doc.root, "resources")!;
       for (const [index, face] of faces.entries()) {
         const ids = ["v1", "v2", "v3"].map((k) => Number(face.getAttribute(k)));
@@ -268,11 +271,15 @@ export function import3mf(
           !ids.every((i) => Number.isInteger(i) && i >= 0 && i < points.length)
         )
           throw new Error("Invalid 3MF triangle index.");
+        const originalPoints = ids.map(
+          (id) => points[id].toArray() as Vec3,
+        ) as [Vec3, Vec3, Vec3];
         if (transform.determinant() < 0) [ids[1], ids[2]] = [ids[2], ids[1]];
         ids.forEach((id, j) =>
           points[id].toArray(positions, index * 9 + j * 3),
         );
         let faceTool = tool ?? 0;
+        let vertexTools: number[] | undefined;
         const pid = face.getAttribute("pid") ?? object.getAttribute("pid");
         if (pid) {
           const resource = Array.from(resources.children).find(
@@ -295,23 +302,72 @@ export function import3mf(
                 "#91ad87",
               property.getAttribute("name") ?? "",
             );
-          if (
-            [face.getAttribute("p2"), face.getAttribute("p3")].some(
-              (p) => p !== null && Number(p) !== p1,
-            )
-          )
-            warnings.push(
-              "Interpolated vertex colors were mapped to the first vertex material on each triangle.",
-            );
+          const indices = [
+            p1,
+            Number(face.getAttribute("p2") ?? p1),
+            Number(face.getAttribute("p3") ?? p1),
+          ];
+          if (indices.some((p) => p !== p1))
+            vertexTools = indices.map((p) => {
+              const prop = properties[p];
+              if (!prop) throw new Error("Invalid 3MF vertex material index.");
+              return colorTool(
+                prop.getAttribute("displaycolor") ??
+                  prop.getAttribute("color") ??
+                  "#91ad87",
+                prop.getAttribute("name") ?? "",
+              );
+            });
         }
         const paint =
           attr(face, "paint_color") ?? attr(face, "mmu_segmentation");
+        let patches: PaintedTriangle[] | undefined;
         if (paint) {
-          // Preserve the presence of painted triangles until decoding is available;
-          // refusing silent loss is preferable to exporting a false single-color job.
-          throw new Error(
-            "This 3MF contains surface-painted triangles. Painted-triangle import is still being implemented; its colors were not discarded.",
+          hasMaterials = true;
+          patches = decodePaintTriangle(paint, originalPoints, faceTool);
+        } else if (vertexTools) {
+          // A physical filament cannot interpolate RGB: partition by the nearest vertex in barycentric space.
+          const center = [0, 1, 2].map(
+            (axis) => originalPoints.reduce((n, p) => n + p[axis], 0) / 3,
+          ) as Vec3;
+          patches = originalPoints.flatMap((a, i) => {
+            const b = originalPoints[(i + 1) % 3],
+              c = originalPoints[(i + 2) % 3];
+            const ab = a.map((v, j) => (v + b[j]) / 2) as Vec3,
+              ac = a.map((v, j) => (v + c[j]) / 2) as Vec3;
+            return [
+              {
+                points: [a, ab, center] as [Vec3, Vec3, Vec3],
+                tool: vertexTools![i],
+              },
+              {
+                points: [a, center, ac] as [Vec3, Vec3, Vec3],
+                tool: vertexTools![i],
+              },
+            ];
+          });
+          warnings.push(
+            "Interpolated vertex colors were divided into discrete filament regions.",
           );
+        }
+        if (patches && !surfaceTriangles) {
+          surfaceTriangles = Array.from(positions.subarray(0, index * 9));
+          surfaceTools = Array.from(faceTools.subarray(0, index));
+        }
+        if (surfaceTriangles) {
+          for (const patch of patches ?? [
+            { points: originalPoints, tool: faceTool },
+          ]) {
+            const points = [...patch.points];
+            if (transform.determinant() < 0)
+              [points[1], points[2]] = [points[2], points[1]];
+            if (surfaceTools.length >= 2_000_000)
+              throw new Error(
+                "Painted 3MF exceeds two million surface triangles.",
+              );
+            surfaceTriangles.push(...points.flat());
+            surfaceTools.push(ensureTool(patch.tool));
+          }
         }
         faceTools[index] = ensureTool(faceTool);
         if (index && faceTools[index] !== faceTools[0]) painted = true;
@@ -330,7 +386,14 @@ export function import3mf(
           scale: [1, 1, 1],
           color: palette[selectedTool].color,
           tool: selectedTool,
-          faceTools: painted ? faceTools : undefined,
+          faceTools: surfaceTriangles
+            ? new Uint8Array(surfaceTools)
+            : painted
+              ? faceTools
+              : undefined,
+          paintTriangles: surfaceTriangles
+            ? new Float32Array(surfaceTriangles)
+            : undefined,
           assemblyId,
           visible: true,
           plate,
@@ -391,6 +454,12 @@ export function import3mf(
         m.positions[i + 1] -= center.y;
         m.positions[i + 2] -= bounds.min.z;
       }
+      if (m.paintTriangles)
+        for (let i = 0; i < m.paintTriangles.length; i += 3) {
+          m.paintTriangles[i] -= center.x;
+          m.paintTriangles[i + 1] -= center.y;
+          m.paintTriangles[i + 2] -= bounds.min.z;
+        }
       m.position = [center.x, center.y, bounds.min.z] as Vec3;
       if (parts.length === 1) m.assemblyId = undefined;
     }

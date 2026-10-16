@@ -85,11 +85,10 @@ export function materialErrors(
 ): string[] {
   const errors: string[] = [];
   const capacity = printer.toolCount ?? 1;
-  if (models.some((m) => m.visible && m.faceTools))
-    errors.push(
-      "Surface-color slicing is not ready yet. Assign a single filament to each part to clear surface assignments.",
-    );
   const used = new Set(models.filter((m) => m.visible).map((m) => m.tool ?? 0));
+  for (const m of models)
+    if (m.visible && m.faceTools)
+      for (const tool of m.faceTools) used.add(tool);
   if (settings.supports !== "disabled") used.add(multi.supportTool);
   if (!filaments.length || filaments.length > capacity)
     errors.push(`This printer supports ${capacity} filament slots.`);

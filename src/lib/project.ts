@@ -34,6 +34,9 @@ export function saveProject(p: Project) {
       ...m,
       positions: Array.from(m.positions),
       faceTools: m.faceTools ? Array.from(m.faceTools) : undefined,
+      paintTriangles: m.paintTriangles
+        ? Array.from(m.paintTriangles)
+        : undefined,
     })),
   });
   download(
@@ -92,6 +95,9 @@ export function validateProject(p: unknown): Project {
           ? m.assemblyId
           : undefined,
       faceTools: m.faceTools ? new Uint8Array(m.faceTools) : undefined,
+      paintTriangles: m.paintTriangles
+        ? new Float32Array(m.paintTriangles)
+        : undefined,
       color: /^#[a-f0-9]{6}$/i.test(m.color) ? m.color : "#91ad87",
     };
   });
@@ -120,12 +126,28 @@ export function validateProject(p: unknown): Project {
   for (const m of v.models) {
     if (
       m.faceTools &&
-      (m.faceTools.length !== m.positions.length / 9 ||
+      (m.faceTools.length !== (m.paintTriangles ?? m.positions).length / 9 ||
         Array.from(m.faceTools).some(
           (t) => !Number.isInteger(t) || t < 0 || t > 63,
         ))
     )
       throw new Error("Invalid triangle material data.");
+    if (
+      m.paintTriangles &&
+      (!m.faceTools ||
+        !m.paintTriangles.length ||
+        m.paintTriangles.length % 9 ||
+        m.paintTriangles.length > 18_000_000 ||
+        Array.from(m.paintTriangles).some((n) => !Number.isFinite(n)))
+    )
+      throw new Error("Invalid painted surface geometry.");
+    if (
+      m.paintDepth !== undefined &&
+      (!Number.isFinite(m.paintDepth) ||
+        m.paintDepth < 0.1 ||
+        m.paintDepth > 20)
+    )
+      throw new Error("Invalid painted surface depth.");
   }
   const filaments = v.filaments ?? [defaultFilament(v.settings)];
   if (!Array.isArray(filaments) || !filaments.length || filaments.length > 64)

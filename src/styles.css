@@ -2135,3 +2135,19 @@ a {
   overflow-wrap: anywhere;
   font-size: 11px;
 }
+
+.paint-panel {
+  position: absolute;
+  z-index: 12;
+  left: 72px;
+  top: 84px;
+  width: min(360px, calc(100% - 96px));
+  padding: 14px;
+  background: #fbfcf7f5;
+  border: 1px solid #dce3d4;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px #24322112;
+}
+@media (max-width: 760px) {
+  .paint-panel { left: 12px; top: 74px; width: calc(100% - 24px); padding: 10px; }
+}

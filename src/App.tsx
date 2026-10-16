@@ -6,6 +6,8 @@ import {
 } from "./lib/assemblies";
 import { bindImportedMaterials } from "./lib/import-materials";
 import { colorAboveHeight } from "./lib/height-colors";
+import { paintSurface, type PaintStroke } from "./lib/surface-paint";
+import { PaintPanel, type PaintSettings } from "./components/PaintPanel";
 import { newId } from "./lib/id";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -61,6 +63,7 @@ import {
   MousePointer2,
   Move3D,
   PanelLeft,
+  Paintbrush,
   Play,
   Plus,
   Printer,
@@ -178,6 +181,11 @@ function App() {
     [showTravel, setShowTravel] = useState(false),
     [hiddenFeatures, setHiddenFeatures] = useState<number[]>([]),
     [colorMode, setColorMode] = useState("feature");
+  const [paint, setPaint] = useState<PaintSettings>({
+    tool: 1,
+    radius: 3,
+    mode: "brush",
+  });
   const [viewCommand, setViewCommand] = useState({ view: "home", tick: 0 }),
     [wireframe, setWireframe] = useState(false),
     [busy, setBusy] = useState(false),
@@ -242,20 +250,23 @@ function App() {
     size = model ? dimensions(model) : [0, 0, 0];
   const notify = (message: string, color = "forest") =>
     notifications.show({ message, color, autoClose: 4500 });
-  const commit = useCallback((next: Project | ((p: Project) => Project)) => {
-    if (abortRef.current) return;
-    const old = projectRef.current;
-    const p = typeof next === "function" ? next(old) : next;
-    history.current = [...history.current.slice(-39), old];
-    future.current = [];
-    projectRef.current = p;
-    setProject(p);
-    setHistoryVersion((v) => v + 1);
-    setResult(null);
-    setPreview(false);
-    setErrors([]);
-    setPlaying(false);
-  }, []);
+  const commit = useCallback(
+    (next: Project | ((p: Project) => Project), record = true) => {
+      if (abortRef.current) return;
+      const old = projectRef.current;
+      const p = typeof next === "function" ? next(old) : next;
+      if (record) history.current = [...history.current.slice(-39), old];
+      future.current = [];
+      projectRef.current = p;
+      setProject(p);
+      setHistoryVersion((v) => v + 1);
+      setResult(null);
+      setPreview(false);
+      setErrors([]);
+      setPlaying(false);
+    },
+    [],
+  );
   const undo = useCallback(() => {
     if (abortRef.current || !history.current.length) return;
     const old = history.current.pop()!;
@@ -347,6 +358,29 @@ function App() {
         ground,
       ),
     }));
+  }
+  function paintModel(id: string, stroke: PaintStroke, first: boolean) {
+    const source = projectRef.current.models.find((m) => m.id === id);
+    if (!source || !filaments[stroke.tool]) return;
+    try {
+      const patch = paintSurface(source, stroke);
+      commit(
+        (p) => ({
+          ...p,
+          models: p.models.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+        }),
+        first,
+      );
+      setSelected(id);
+    } catch (error) {
+      notify((error as Error).message, "red");
+    }
+  }
+  function beginPainting() {
+    setPaint((p) => ({ ...p, tool: Math.min(p.tool, filaments.length - 1) }));
+    setTool("paint");
+    setMobilePanel(null);
+    view("paint-fit");
   }
   function removeModel(id = selected) {
     const selectedModel = project.models.find((m) => m.id === id);
@@ -997,7 +1031,7 @@ function App() {
           <SegmentedControl
             fullWidth
             size="xs"
-            value={tool === "select" ? "translate" : tool}
+            value={tool === "select" || tool === "paint" ? "translate" : tool}
             onChange={(v) => setTool(v as ViewTool)}
             data={[
               { value: "translate", label: "Move" },
@@ -1094,6 +1128,7 @@ function App() {
                   tool: Number(v),
                   color: filaments[Number(v)].color,
                   faceTools: undefined,
+                  paintTriangles: undefined,
                 })
               }
             />
@@ -1123,7 +1158,12 @@ function App() {
                 onClick={() =>
                   updateModel(
                     filaments.length > 1
-                      ? { color, tool: index, faceTools: undefined }
+                      ? {
+                          color,
+                          tool: index,
+                          faceTools: undefined,
+                          paintTriangles: undefined,
+                        }
                       : { color },
                   )
                 }
@@ -1142,6 +1182,13 @@ function App() {
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
+                <Menu.Item
+                  disabled={busy || filaments.length < 2}
+                  leftSection={<Paintbrush size={14} />}
+                  onClick={beginPainting}
+                >
+                  Paint surfaces
+                </Menu.Item>
                 <Menu.Item
                   disabled={busy || filaments.length < 2}
                   onClick={() => {
@@ -1442,6 +1489,9 @@ function App() {
             selected={selected}
             onSelect={setSelected}
             tool={busy ? "select" : tool}
+            paint={paint}
+            filamentColors={filaments.map((f) => f.color)}
+            onPaint={paintModel}
             transformWholeAssembly={transformWholeAssembly}
             onTransform={(id, patch) => updateModel(patch, true, id)}
             viewCommand={viewCommand}
@@ -1454,6 +1504,26 @@ function App() {
             colorMode={colorMode}
             wireframe={wireframe}
           />
+          {tool === "paint" && !preview && model && !busy && (
+            <PaintPanel
+              onView={(v) => view(`paint-${v}`)}
+              filaments={filaments}
+              settings={paint}
+              onChange={setPaint}
+              depth={
+                model.paintDepth ??
+                Math.max(
+                  project.settings.lineWidth * 2,
+                  project.settings.layerHeight * 3,
+                )
+              }
+              onDepth={(paintDepth) => updateModel({ paintDepth })}
+              onClear={() =>
+                updateModel({ faceTools: undefined, paintTriangles: undefined })
+              }
+              onDone={() => setTool("select")}
+            />
+          )}
           <div className="plate-heading">
             <div className="plate-label">
               <span className="plate-number">
@@ -1523,6 +1593,14 @@ function App() {
                 disabled={!model || busy}
               >
                 <Scissors size={18} />
+              </IconButton>
+              <IconButton
+                label="Paint surfaces"
+                active={tool === "paint"}
+                onClick={beginPainting}
+                disabled={busy || !model || filaments.length < 2}
+              >
+                <Paintbrush size={19} />
               </IconButton>
               <span className="toolbar-divider" />
               <IconButton
@@ -2630,13 +2708,13 @@ function App() {
                 and reusable print presets are supported.
               </Text>
               <Text size="sm" mt="md">
-                Assign filament to each part, or use Color by height to create
-                linked bands. Bambu AMS and Snapmaker U1 profiles are available.
-                Surface painting, support painting, STEP, resin slicing, and
-                full Orca project settings are still being developed or
-                unsupported. 3MF imports component geometry and part material
-                assignments. Generated paths still need printer-specific
-                validation.
+                Assign filament to each part, paint surfaces, or use Color by
+                height to create linked bands. Bambu AMS and Snapmaker U1
+                profiles are available. Clear surface paint before cutting or
+                splitting a painted part. Support painting, STEP, resin slicing,
+                and full Orca project settings are not supported. 3MF imports
+                component geometry, material assignments, and painted facets.
+                Generated paths still need printer-specific validation.
               </Text>
               <Text size="sm" mt="md">
                 <a

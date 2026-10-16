@@ -79,3 +79,33 @@ This section supersedes the older status of items 1–6 above; their remaining s
 - The production multi-filament test exposed Escape from the filament dialog also deselecting the model; global shortcuts now ignore events originating in a dialog. Its regression passes without reselecting the model as a workaround.
 - Vendor hashes match the manifest; `git diff --check` passes.
 - These results establish this checkpoint, not completion of the full goal. No goal update to complete and no Pages deployment has occurred.
+
+## Surface color and overlap implementation checkpoint
+
+This continuation replaces the earlier surface-color and overlap limitations with working implementations, while retaining the rest of the original goal.
+
+- Added locked `manifold-3d` 3.5.4, Apache-2.0. Its app worker and WASM are bundled locally, separate from Kiri's internal Manifold. `prepareMaterials` bypasses boolean processing for unpainted non-overlapping jobs, and terminates its worker on completion, error, timeout or cancellation.
+- `material-regions.ts` converts painted facets into inward material masks, intersects them with the closed source mesh, and subtracts them from the base material. Independent closed solids retain the original total volume. Within an assembly, later source parts take priority in actual overlaps; same-filament regions are unioned to avoid duplicate extrusion.
+- Painted surface tessellation stays separate from the watertight source geometry. A round brush subdivides only affected areas. Flat-face and replace-color operations, editable world-space color depth, filament selection, camera views and clear paint are available in a Mantine panel. Each drag is one undo entry. Paint persists through project serialization/recovery and assembly transforms. Painting on a phone frames the model below the control panel; two-finger camera gestures remain available.
+- 3MF painted-facet trees now decode right-to-left hexadecimal leaf states, extended slots and one/two/three-edge splits. Decoded patches preserve the original source triangle order under mirrored transforms. Core vertex-interpolated colors become discrete nearest-vertex material regions rather than dropping the second/third vertex color. This decoder is an independent format implementation; Orca source is not bundled.
+- Added tests for volume conservation, real brush-mask volumes, overlap precedence, malformed paint data, closed-mesh errors, paint project persistence/transforms and color replacement. Browser tests exercise real converted extrusion paths, imported painted 3MF, worker cancellation/retry and surface painting/recovery/export at desktop and phone dimensions.
+- Actual tested development failure: Vite initially optimized the newly loaded worker dependency during slicing and reloaded the page. `optimizeDeps.include` now includes Manifold up front so the first job is not interrupted.
+- See `docs/material-regions.md` for source references and detailed behavior.
+
+### Remaining interaction and validation work
+
+- Cutting/splitting/height-editing an already painted surface currently asks to clear paint first. These need to operate on the prepared material regions and preserve their assignments. Do not treat that temporary restriction as the full requested editing scope being satisfied.
+- Add or complete remaining coverage for imported OBJ material groups and assembly editing order/grouping controls. The material overlap rule is documented but reordering/grouping needs a usable workflow.
+- Continue the earlier firmware state, physical-material limit, purge quantity/placement/capacity, native multi-plate metadata and offline/profile error audits. None of those requirements are removed by the new paint work.
+- Final deployment remains pending. Physical printer verification has not occurred, and software tests must not be described as physical verification.
+
+## Requested GitHub Pages release
+
+The user subsequently requested publication to `joshstovall` and GitHub Pages. This release publishes the current implementation while the remaining full multi-color goal stays active; the earlier statements that these changes are local-only describe prior checkpoints.
+
+- All 47 core tests and all 32 browser integration tests pass.
+- The production build succeeds with `VITE_BASE_PATH=/webslicer/`. Four additional production checks pass: phone and tablet controls, multi-filament G-code export, and surface painting through the bundled material worker/WASM to colored G-code layers.
+- Phone paint controls were visually inspected; field values and the model are visible below the panel.
+- Vendored engine checksums match `vendor-manifest.json`; `git diff --check` passes.
+- The existing Actions workflow deploys pushes to `main` to https://joshstovall.github.io/webslicer/. Deployment success must be confirmed from the corresponding Actions run and live site.
+- Publication does not resolve the remaining editing, firmware, purge-planning, metadata or physical-printer validation work listed above.

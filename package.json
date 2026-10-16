@@ -19,6 +19,7 @@
     "fflate": "^0.8.2",
     "idb-keyval": "^6.2.1",
     "lucide-react": "^0.468.0",
+    "manifold-3d": "3.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "three": "^0.182.0"

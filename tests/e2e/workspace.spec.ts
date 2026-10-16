@@ -291,3 +291,30 @@ test("production-compatible multi-filament UI exports both tools", async ({
   ).toEqual([]);
   expect(gcode).toContain(";TYPE:purge tower");
 });
+
+test('production-compatible surface painting loads its local worker and exports colored layers', async ({ page }) => {
+  await start(page); await cube(page);
+  await page.getByRole('combobox', { name: 'Printer', exact: true }).click();
+  await page.getByRole('option', { name: 'Custom multi-extruder FDM', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage filaments', exact: true }).click();
+  await page.getByRole('button', { name: 'Add filament', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Paint surfaces', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Paint view', exact: true }).click();
+  await page.getByRole('option', { name: 'Top', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Paint mode', exact: true }).click();
+  await page.getByRole('option', { name: 'Flat face', exact: true }).click();
+  const canvas = page.getByTestId('viewport').locator('canvas'), box = (await canvas.boundingBox())!;
+  await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
+  await page.getByRole('button', { name: 'Done painting', exact: true }).click();
+  await page.getByRole('button', { name: 'Slice plate', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Export G-code', exact: true })).toBeVisible({ timeout: 60000 });
+  const pending = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export G-code', exact: true }).click();
+  const file = await pending;
+  const { parseGcode } = await import('../../src/lib/gcode');
+  const result = parseGcode(await readFile((await file.path())!, 'utf8'));
+  const tools = (layers: typeof result.layers) => [...new Set(layers.flatMap(l => Array.from(l.tools).filter((_, i) => l.features[i] !== 4 && l.features[i] !== 5)))];
+  expect(tools(result.layers.filter(l => l.z < 19))).toEqual([0]);
+  expect(tools(result.layers.filter(l => l.z > 19.5))).toEqual([1]);
+});
