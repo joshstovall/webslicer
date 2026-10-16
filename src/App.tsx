@@ -174,6 +174,7 @@ function App() {
     [hydrated, setHydrated] = useState(false),
     [saveStatus, setSaveStatus] = useState("Loading project");
   const projectRef = useRef(project);
+  const [savedProject, setSavedProject] = useState<Project | null>(null);
   projectRef.current = project;
   const history = useRef<Project[]>([]),
     future = useRef<Project[]>([]);
@@ -336,15 +337,26 @@ function App() {
   }, []);
   useEffect(() => {
     if (!hydrated) return;
+    let current = true;
     setSaveStatus("Saving…");
     const t = setTimeout(
       () =>
         saveLocal(project)
-          .then(() => setSaveStatus("Saved on this device"))
-          .catch(() => setSaveStatus("Storage full · download project")),
+          .then(() => {
+            if (!current || projectRef.current !== project) return;
+            setSavedProject(project);
+            setSaveStatus("Saved on this device");
+          })
+          .catch(() => {
+            if (current && projectRef.current === project)
+              setSaveStatus("Storage full · download project");
+          }),
       800,
     );
-    return () => clearTimeout(t);
+    return () => {
+      current = false;
+      clearTimeout(t);
+    };
   }, [project, hydrated]);
   useEffect(() => {
     return () => abortRef.current?.abort();
@@ -1547,7 +1559,9 @@ function App() {
         </Menu>
         <span className="saved-indicator">
           <Check size={13} />
-          {saveStatus}
+          {saveStatus === "Saved on this device" && savedProject !== project
+            ? "Saving…"
+            : saveStatus}
         </span>
         <span className="spacer" />
         <div className="header-tools">

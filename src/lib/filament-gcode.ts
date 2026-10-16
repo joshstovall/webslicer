@@ -1,4 +1,5 @@
 import type { Filament, Printer, Settings } from "../types";
+import { fanSpeedAtLayer } from "./cooling";
 
 /** Apply spool settings to planned paths; leave startup, shutdown and change macros intact. */
 export function applyFilamentSettings(
@@ -30,7 +31,7 @@ export function applyFilamentSettings(
     const temperature = `M109 S${layer <= 0 ? f.firstNozzleTemp : f.nozzleTemp}${target}`;
     // Bambu P1 is the part fan. U1 binds its unindexed fan to the active head.
     const fanIndex = printer.firmware === "bambu" ? " P1" : "";
-    const fan = `M106${fanIndex} S${layer + 1 >= (f.fanLayer ?? settings.fanLayer) ? Math.round((f.fan * 255) / 100) : 0}`;
+    const fan = `M106${fanIndex} S${fanSpeedAtLayer(f, settings, layer + 1)}`;
     if (force || lastTemperature !== temperature) lines.push(temperature);
     if (force || lastFan !== fan) lines.push(fan);
     lastTemperature = temperature;

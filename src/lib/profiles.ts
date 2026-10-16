@@ -138,6 +138,8 @@ export const DEFAULT_SETTINGS: Settings = {
   travelSpeed: 150,
   firstLayerSpeed: 25,
   minLayerTime: 8,
+  minPrintSpeed: 10,
+  fanRampLayers: 1,
   maxFlow: 15,
   nozzleTemp: 210,
   bedTemp: 60,
@@ -196,7 +198,8 @@ export function processProfile(s: Settings, multi?: MultiMaterialSettings) {
     outputSeekrate: s.travelSpeed,
     firstLayerRate: s.firstLayerSpeed,
     firstLayerFillRate: s.firstLayerSpeed,
-    outputMinLayerTime: s.minLayerTime,
+    // Whole-layer cooling is applied after per-filament flow adjustment.
+    outputMinLayerTime: 0,
     outputMaxFlowrate: s.maxFlow,
     outputTemp: s.nozzleTemp,
     outputBedTemp: s.bedTemp,

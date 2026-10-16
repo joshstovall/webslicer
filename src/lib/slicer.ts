@@ -12,6 +12,7 @@ import { prepareMaterials } from "./prepare-materials";
 import { processProfile, deviceProfile } from "./profiles";
 import { compileMachineGcode } from "./machine-gcode";
 import { applyFilamentSettings } from "./filament-gcode";
+import { applyLayerCooling } from "./cooling";
 import { parseGcode } from "./gcode";
 import { auditPurgeVolumes } from "./purge-audit";
 import { auditThermalCommands } from "./thermal-limits";
@@ -76,8 +77,14 @@ export async function slicePlate(
             filaments,
           );
           auditPurgeVolumes(planned, printer.filament, multi, true);
-          const compiled = compileMachineGcode(
+          const cooled = applyLayerCooling(
             planned,
+            printer,
+            settings,
+            filaments,
+          );
+          const compiled = compileMachineGcode(
+            cooled.gcode,
             printer,
             settings,
             filaments,
@@ -92,6 +99,7 @@ export async function slicePlate(
             cost: settings.cost,
             filaments,
           });
+          result.warnings.push(...cooled.warnings);
           if (!result.layers.length)
             throw new Error("No printable layers were generated.");
           const excluded = bedExclusions(printer, false);

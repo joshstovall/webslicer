@@ -33,6 +33,9 @@ export interface Filament {
   fan: number;
   /** First layer on which part cooling is enabled (one-based). */
   fanLayer?: number;
+  fanRampLayers?: number;
+  minLayerTime?: number;
+  minPrintSpeed?: number;
 }
 export interface MultiMaterialSettings {
   purgeTower: boolean;
@@ -95,6 +98,8 @@ export interface Settings {
   travelSpeed: number;
   firstLayerSpeed: number;
   minLayerTime: number;
+  minPrintSpeed?: number;
+  fanRampLayers?: number;
   maxFlow: number;
   nozzleTemp: number;
   bedTemp: number;

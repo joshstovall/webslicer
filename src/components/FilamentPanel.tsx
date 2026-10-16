@@ -84,7 +84,7 @@ export function FilamentPanel({
         </Alert>
       )}
       <Text size="xs" c="dimmed">
-        Each filament has its own nozzle temperature, flow and part-cooling fan.
+        Each filament has its own temperature, flow, fan ramp and layer cooling.
         The bed temperature is shared; set it in Temperature &amp; cooling.
       </Text>
       <Accordion multiple defaultValue={["0"]}>
@@ -234,6 +234,69 @@ export function FilamentPanel({
                     }
                   />
                 </div>
+                <Accordion variant="contained">
+                  <Accordion.Item value="cooling">
+                    <Accordion.Control>
+                      Filament {i + 1} layer cooling
+                    </Accordion.Control>
+                    <Accordion.Panel>
+                      <Stack gap="sm">
+                        <NumberInput
+                          label={`Filament ${i + 1} fan ramp length`}
+                          description="1 starts at full cooling. Longer ramps increase the fan gradually from the configured start layer."
+                          value={f.fanRampLayers ?? settings.fanRampLayers ?? 1}
+                          min={1}
+                          max={20}
+                          allowDecimal={false}
+                          suffix=" layers"
+                          onChange={(v) =>
+                            typeof v === "number" &&
+                            Number.isInteger(v) &&
+                            v >= 1 &&
+                            v <= 20 &&
+                            update(i, { fanRampLayers: v })
+                          }
+                        />
+                        <NumberInput
+                          label={`Filament ${i + 1} minimum layer time`}
+                          description="0 disables this filament’s target. The longest target among printed filaments applies to the complete layer."
+                          value={f.minLayerTime ?? settings.minLayerTime}
+                          min={0}
+                          max={120}
+                          suffix=" s"
+                          onChange={(v) =>
+                            typeof v === "number" &&
+                            v >= 0 &&
+                            v <= 120 &&
+                            update(i, { minLayerTime: v })
+                          }
+                        />
+                        <NumberInput
+                          label={`Filament ${i + 1} minimum cooling speed`}
+                          description="Cooling slows deposition to this floor. Lower speeds required by flow limits remain unchanged."
+                          value={
+                            f.minPrintSpeed ?? settings.minPrintSpeed ?? 10
+                          }
+                          min={1}
+                          max={100}
+                          suffix=" mm/s"
+                          onChange={(v) =>
+                            typeof v === "number" &&
+                            v >= 1 &&
+                            v <= 100 &&
+                            update(i, { minPrintSpeed: v })
+                          }
+                        />
+                        <Text size="xs" c="dimmed">
+                          If slowing is insufficient, the head retracts and
+                          lifts while cooling. Spiral vase mode stays
+                          continuous. The preview reports any cooling target
+                          that cannot be reached safely.
+                        </Text>
+                      </Stack>
+                    </Accordion.Panel>
+                  </Accordion.Item>
+                </Accordion>
                 <div className="field-pair">
                   <NumberInput
                     label={`Filament ${i + 1} density`}

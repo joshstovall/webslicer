@@ -6,6 +6,7 @@ import type {
   Settings,
 } from "../types";
 import { thermalErrors } from "./thermal-limits";
+import { validCoolingSettings } from "./cooling";
 
 export const FILAMENT_COLORS = [
   "#91ad87",
@@ -35,6 +36,9 @@ export function defaultFilament(s: Settings, index = 0): Filament {
     maxFlow: s.maxFlow,
     fan: s.fan,
     fanLayer: s.fanLayer,
+    fanRampLayers: s.fanRampLayers ?? 1,
+    minLayerTime: s.minLayerTime,
+    minPrintSpeed: s.minPrintSpeed ?? 10,
   };
 }
 export function purgeVolumeFor(
@@ -150,6 +154,7 @@ export function materialErrors(
       errors.push(`Filament ${tool + 1} has invalid flow settings.`);
     const fanLayer = f.fanLayer ?? settings.fanLayer;
     if (
+      !validCoolingSettings(f, settings) ||
       !Number.isFinite(f.fan) ||
       f.fan < 0 ||
       f.fan > 100 ||

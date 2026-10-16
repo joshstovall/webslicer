@@ -10,6 +10,7 @@ import {
 } from "./multimaterial";
 import { DEFAULT_SETTINGS, PRINTERS } from "./profiles";
 import { settingsForFilament } from "./material-settings";
+import { validCoolingSettings } from "./cooling";
 const KEY = "stratum-project-v1";
 export async function saveLocal(p: Project) {
   await set(KEY, p);
@@ -163,6 +164,8 @@ export function validateProject(p: unknown): Project {
       !/^#[0-9a-f]{6}$/i.test(f.color)
     )
       throw new Error("Invalid filament data.");
+    if (!validCoolingSettings(f, { ...DEFAULT_SETTINGS, ...v.settings }))
+      throw new Error("Invalid filament layer cooling settings.");
     for (const [key, min, max] of [
       ["nozzleTemp", 150, 350],
       ["firstNozzleTemp", 150, 350],

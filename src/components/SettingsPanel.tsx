@@ -91,6 +91,9 @@ export function SettingsPanel({
               "cost",
               "fan",
               "fanLayer",
+              "fanRampLayers",
+              "minLayerTime",
+              "minPrintSpeed",
             ].includes(key))
         }
       />
@@ -246,7 +249,15 @@ export function SettingsPanel({
           {advanced && (
             <>
               {number("maxFlow", "Max volumetric flow", 1, 100, 0.5, " mm³/s")}
-              {number("minLayerTime", "Minimum layer time", 0, 60, 1, " s")}
+              {number("minLayerTime", "Minimum layer time", 0, 120, 1, " s")}
+              {number(
+                "minPrintSpeed",
+                "Minimum cooling speed",
+                1,
+                100,
+                1,
+                " mm/s",
+              )}
             </>
           )}
         </>
@@ -340,6 +351,8 @@ export function SettingsPanel({
           )}
           {number("fan", "Cooling fan", 0, 100, 5, " %")}
           {advanced && number("fanLayer", "Fan starts at layer", 1, 20)}
+          {advanced &&
+            number("fanRampLayers", "Fan ramp length", 1, 20, 1, " layers")}
         </>
       ),
     },

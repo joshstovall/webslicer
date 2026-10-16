@@ -10,6 +10,9 @@ const keys = [
   "cost",
   "fan",
   "fanLayer",
+  "fanRampLayers",
+  "minLayerTime",
+  "minPrintSpeed",
 ] as const;
 /** One spool is authoritative for material settings; process edits leave it intact. */
 export function settingsForFilament(
