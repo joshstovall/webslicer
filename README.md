@@ -16,7 +16,7 @@ npm run build
 npm run preview
 ```
 
-Deploy the entire `dist/` folder. For a subdirectory, build with `VITE_BASE_PATH=/webslicer/ npm run build`. Preserve the `engine/` and `wasm/` folders and serve `.wasm` as `application/wasm`. No cross-origin isolation headers are required. Fonts and the slicing engine are bundled locally. Selecting a vendor printer initially fetches its pinned official G-code templates; saved projects retain those templates for later offline use. Browser-local projects are tied to the origin: download a project file before changing hosts or clearing site data.
+Deploy the entire `dist/` folder. For a subdirectory, build with `VITE_BASE_PATH=/webslicer/ npm run build`. Preserve the `engine/` and `wasm/` folders and serve `.wasm` as `application/wasm`. No cross-origin isolation headers are required. Fonts and the slicing engine are bundled locally. Selecting a vendor printer initially fetches its pinned official G-code templates. Successfully loaded templates are cached by revision for later selection without GitHub connectivity; saved projects also retain them. Browser-local projects are tied to the origin: download a project file before changing hosts or clearing site data.
 
 ## GitHub Pages
 
@@ -54,7 +54,7 @@ TEST_URL=http://localhost:4174/webslicer/ npm run test:e2e -- tests/e2e/workspac
 
 ## Printer setup and supported scope
 
-Generic printer choices use **Marlin-compatible** start/end sequences. Bambu and Snapmaker presets load pinned official templates and use printer-specific adapters for multi-tool jobs. Review those sequences for your exact firmware, leveling procedure, and machine. This software has been tested through browser-generated G-code, **not on physical printers**. Inspect toolpaths before printing. Motion-time estimates exclude heating and acceleration.
+Generic printer choices use **Marlin-compatible** start/end sequences. Bambu and Snapmaker presets load pinned official templates and use printer-specific adapters for multi-tool jobs. Tool-change adapters preserve planned motion and retraction state; see `docs/machine-state.md` for their contracts and source evidence. Review those sequences for your exact firmware, leveling procedure, and machine. This software has been tested through browser-generated G-code, **not on physical printers**. Inspect toolpaths before printing. Motion-time estimates exclude heating and acceleration.
 
 This is an independent FDM slicer. Multi-color support is in active development; see `docs/multicolor-progress.md` for the remaining implementation and validation work. Part assignments and height bands generate real tool changes. Painted 3MF trees and core triangle/vertex colors are converted into printable material regions. A local Manifold worker creates closed paint shells and resolves overlaps between assembly parts. Cuts, splits, and height assignments preserve painted materials as linked solid parts. Height colors replace the material above the boundary while retaining existing colors below it. Modifier meshes, support painting, STEP import, resin slicing, and proprietary printer cloud integrations remain outside the implemented feature set. 3MF component geometry, part filament assignments, and filament palettes are imported; other Orca project process settings are not imported. Imported G2/G3 arc moves are explicitly reported as unsupported by the linear viewer. The engine exports linear moves. Printer uploads require CORS and compatible HTTP/HTTPS connectivity.
 

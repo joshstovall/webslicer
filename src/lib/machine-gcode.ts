@@ -47,7 +47,7 @@ export function compileMachineGcode(
     total_layer_count: totalLayers,
     layer_num: 0,
     layer_z: settings.firstLayerHeight,
-    max_layer_z: Math.max(...planned.layers.map((l) => l.z)),
+    max_layer_z: 0,
     max_print_height: printer.bed[2],
     z_offset: 0,
     nozzle_diameter: printer.nozzle,
@@ -100,6 +100,12 @@ export function compileMachineGcode(
     changes = 0;
   let skippingStart = false,
     skippingChange = false;
+  let printedHeight = 0,
+    plannerDebt = 0,
+    plannerE = 0,
+    absoluteE = false,
+    absoluteXYZ = true;
+  const parkedDebt = new Map<number, number>();
   const output = [
     `; Stratum machine profile: ${printer.name}`,
     `; Profile source: ${printer.profileSource}`,
@@ -138,6 +144,15 @@ export function compileMachineGcode(
         toolchange_count: ++changes,
         layer_num: Math.max(0, layer),
         layer_z: z,
+        max_layer_z: Math.max(printedHeight, z),
+        // Kiri carries one pending retract across a tool change. Match that
+        // contract instead of always retracting the configured travel length.
+        old_retract_length_toolchange: plannerDebt,
+        new_retract_length_toolchange: plannerDebt,
+        outer_wall_volumetric_speed: Math.min(
+          settings.outerSpeed * settings.lineWidth * settings.layerHeight,
+          filaments[next].maxFlow,
+        ),
         position: [x, y, z],
         x_after_toolchange: x,
         y_after_toolchange: y,
@@ -168,29 +183,56 @@ export function compileMachineGcode(
       });
       output.push(line, ";STRATUM_MACHINE_CHANGE_BEGIN");
       if (printer.firmware === "bambu")
-        output.push(renderGcodeTemplate(printer.toolChangeGcode, context));
+        output.push(
+          boundChangeLifts(
+            renderGcodeTemplate(printer.toolChangeGcode, context),
+            printer.bed[2],
+          ),
+        );
       else {
         // U1's firmware owns tool docking. This is the by-layer branch of the
         // official profile, with an explicit return to the planner's position.
         output.push(
           "G90",
+          "M83",
           `G1 Z${number(Math.min(z + 1.5, printer.bed[2]))} F600`,
+        );
+        // The official U1 machine config specifies 10 mm tool-change
+        // retraction outside its custom change macro. Complete the planner's
+        // existing travel retract, and remember each independently parked head.
+        const park = Math.max(10, plannerDebt);
+        if (park > plannerDebt)
+          output.push(`G1 E-${number(park - plannerDebt)} F1800 ; park head`);
+        parkedDebt.set(previous, park);
+        output.push(
           `G1 F${Math.min(settings.travelSpeed, 350) * 60}`,
           `M104 S${context.new_filament_temp} T${next}`,
           "M400",
           `T${next}`,
+          `M109 S${context.new_filament_temp} T${next}`,
         );
         if (filaments[next].material === "PVA")
           output.push("SET_VELOCITY_LIMIT ACCEL=3000");
         if (next !== initial)
           output.push(`SM_PRINT_PREEXTRUDE_FILAMENT INDEX=${next}`);
+        const recover = (parkedDebt.get(next) ?? 0) - plannerDebt;
+        output.push("G90", "M83");
+        if (Math.abs(recover) > 1e-6)
+          output.push(
+            `G1 E${number(recover)} F1800 ; match planned retraction`,
+          );
+        parkedDebt.set(next, plannerDebt);
       }
       output.push(
         "G90",
         "M83",
-        `G1 X${number(x)} Y${number(y)} F${settings.travelSpeed * 60}`,
+        // Station/priming macros may move Z. Reestablish clearance before XY.
+        `G1 Z${number(Math.min(Math.max(z, printedHeight) + (printer.firmware === "bambu" ? 3 : 1.5), printer.bed[2]))} F600`,
+        `G1 X${number(x)} Y${number(y)} F${(printer.firmware === "snapmaker-u1" ? Math.min(settings.travelSpeed, 350) : settings.travelSpeed) * 60}`,
         `G1 Z${number(z)} F600`,
         `G1 F${number(feed)}`,
+        ...(!absoluteXYZ ? ["G91"] : []),
+        ...(absoluteE ? [`G92 E${number(plannerE)}`, "M82"] : []),
         ";STRATUM_MACHINE_CHANGE_END",
       );
       skippingChange = true;
@@ -203,17 +245,41 @@ export function compileMachineGcode(
     }
     if (skippingChange) continue;
     if (line === ";STRATUM_PRINT_END") {
+      context.max_layer_z = printedHeight;
       output.push(line, renderGcodeTemplate(printer.endGcode, context));
       continue;
     }
-    const code = line.split(";")[0];
+    const code = line.split(";")[0].trim();
+    if (code === "G90") absoluteXYZ = true;
+    if (code === "G91") absoluteXYZ = false;
+    if (code === "M82") absoluteE = true;
+    if (code === "M83") absoluteE = false;
+    if (/^G92\s/.test(code)) {
+      for (const m of code.matchAll(/([XYZE])\s*(-?(?:\d*\.)?\d+)/g)) {
+        if (m[1] === "X") x = Number(m[2]);
+        if (m[1] === "Y") y = Number(m[2]);
+        if (m[1] === "Z") z = Number(m[2]);
+        if (m[1] === "E") plannerE = Number(m[2]);
+      }
+    }
     if (/^G[01]\s/.test(code)) {
       const args: Record<string, number> = {};
-      for (const m of code.matchAll(/([XYZF])\s*(-?(?:\d*\.)?\d+)/g))
+      for (const m of code.matchAll(/([XYZEF])\s*(-?(?:\d*\.)?\d+)/g))
         args[m[1]] = Number(m[2]);
-      x = args.X ?? x;
-      y = args.Y ?? y;
-      z = args.Z ?? z;
+      const nx = args.X === undefined ? x : absoluteXYZ ? args.X : x + args.X,
+        ny = args.Y === undefined ? y : absoluteXYZ ? args.Y : y + args.Y,
+        nz = args.Z === undefined ? z : absoluteXYZ ? args.Z : z + args.Z;
+      if (args.E !== undefined) {
+        const delta = absoluteE ? args.E - plannerE : args.E;
+        const deposited = Math.max(0, delta - plannerDebt);
+        plannerE += delta;
+        plannerDebt = Math.max(0, plannerDebt - delta);
+        if (deposited > 0 && Math.hypot(nx - x, ny - y) > 1e-6)
+          printedHeight = Math.max(printedHeight, nz);
+      }
+      x = nx;
+      y = ny;
+      z = nz;
       feed = args.F ?? feed;
     }
     output.push(line);
@@ -227,4 +293,21 @@ export function compileMachineGcode(
       );
   }
   return result;
+}
+
+/** Vendor change macros lift in absolute Z; never request travel above the bed's Z limit. */
+function boundChangeLifts(gcode: string, maxZ: number): string {
+  let absolute = true;
+  return gcode
+    .split("\n")
+    .map((line) => {
+      const code = line.split(";")[0].trim();
+      if (code === "G90") absolute = true;
+      if (code === "G91") absolute = false;
+      if (!absolute || !/^G[01]\s/.test(code)) return line;
+      return line.replace(/\bZ(-?(?:\d*\.)?\d+)/, (match, value: string) =>
+        Number(value) > maxZ ? `Z${maxZ}` : match,
+      );
+    })
+    .join("\n");
 }

@@ -6,13 +6,15 @@ test("official Bambu and U1 templates compile around actual two-color toolpaths"
   test.setTimeout(180000);
   await page.goto("/");
   const results = await page.evaluate(async () => {
-    const { VENDOR_PRINTERS, loadVendorPrinter } =
-      await import("/src/lib/vendor-printers.ts");
+    const { VENDOR_PRINTERS, loadVendorPrinter } = await import(
+      "/src/lib/vendor-printers.ts"
+    );
     const { primitive } = await import("/src/lib/geometry.ts");
     const { slicePlate } = await import("/src/lib/slicer.ts");
     const { DEFAULT_SETTINGS } = await import("/src/lib/profiles.ts");
-    const { defaultFilament, DEFAULT_MULTI_MATERIAL } =
-      await import("/src/lib/multimaterial.ts");
+    const { defaultFilament, DEFAULT_MULTI_MATERIAL } = await import(
+      "/src/lib/multimaterial.ts"
+    );
     const a = primitive("cube", 1),
       b = primitive("cube", 1);
     a.scale = b.scale = [0.25, 0.25, 0.05];
@@ -83,8 +85,9 @@ test("Bambu download is a native print archive with thumbnails and can be reopen
   await page.goto("/");
   await expect(page.locator(".saved-indicator")).toContainText("Saved");
   await page.evaluate(async () => {
-    const { loadVendorPrinter, VENDOR_PRINTERS } =
-      await import("/src/lib/vendor-printers.ts");
+    const { loadVendorPrinter, VENDOR_PRINTERS } = await import(
+      "/src/lib/vendor-printers.ts"
+    );
     const { primitive } = await import("/src/lib/geometry.ts");
     const { saveLocal } = await import("/src/lib/project.ts");
     const { DEFAULT_SETTINGS } = await import("/src/lib/profiles.ts");
@@ -154,13 +157,15 @@ test("large AMS slot IDs and all four U1 heads compile with only assigned tools"
   test.setTimeout(120000);
   await page.goto("/");
   const results = await page.evaluate(async () => {
-    const { loadVendorPrinter, VENDOR_PRINTERS } =
-      await import("/src/lib/vendor-printers.ts");
+    const { loadVendorPrinter, VENDOR_PRINTERS } = await import(
+      "/src/lib/vendor-printers.ts"
+    );
     const { primitive } = await import("/src/lib/geometry.ts");
     const { slicePlate } = await import("/src/lib/slicer.ts");
     const { DEFAULT_SETTINGS } = await import("/src/lib/profiles.ts");
-    const { defaultFilament, DEFAULT_MULTI_MATERIAL } =
-      await import("/src/lib/multimaterial.ts");
+    const { defaultFilament, DEFAULT_MULTI_MATERIAL } = await import(
+      "/src/lib/multimaterial.ts"
+    );
     const output = [];
     for (const id of ["bambu-x1c", "snapmaker-u1"]) {
       const printer = await loadVendorPrinter(
@@ -192,6 +197,36 @@ test("large AMS slot IDs and all four U1 heads compile with only assigned tools"
               : { "0:1": 30, "1:0": 25 },
         },
       );
+      // U1 has four independent extruders. Check the emitted E moves over
+      // repeated switches, including revisiting parked heads, against the
+      // native writer's retract contract (firmware priming itself is opaque).
+      const lostExtrusions: string[] = [];
+      let active = tools[0],
+        printing = false,
+        changing = false;
+      const debt = new Map<number, number>();
+      if (id === "snapmaker-u1")
+        for (const line of result.gcode.split("\n")) {
+          if (line === ";STRATUM_PRINT_BEGIN") printing = true;
+          if (line === ";STRATUM_PRINT_END") break;
+          if (!printing) continue;
+          if (line === ";STRATUM_MACHINE_CHANGE_BEGIN") changing = true;
+          if (line === ";STRATUM_MACHINE_CHANGE_END") changing = false;
+          const select = line.match(/^T(\d+)$/);
+          if (select) active = Number(select[1]);
+          const e = line.match(/^G[01]\s.*?\bE(-?[\d.]+)/);
+          if (!e) continue;
+          const amount = Number(e[1]);
+          const owed = debt.get(active) ?? 0;
+          if (
+            !changing &&
+            amount > 0 &&
+            /\b[XY]-?[\d.]+/.test(line) &&
+            owed > 0.001
+          )
+            lostExtrusions.push(line);
+          debt.set(active, Math.max(0, owed - amount));
+        }
       output.push({
         id,
         used: result.tools.map((t) => t.tool),
@@ -203,6 +238,8 @@ test("large AMS slot IDs and all four U1 heads compile with only assigned tools"
           ),
         highSlot: result.gcode.includes("M620 S15A"),
         changes: result.toolChanges,
+        parks: (result.gcode.match(/; park head/g) ?? []).length,
+        lostExtrusions,
       });
     }
     return output;
@@ -210,6 +247,8 @@ test("large AMS slot IDs and all four U1 heads compile with only assigned tools"
   expect(results[0].used).toEqual([7, 15]);
   expect(results[0].highSlot).toBe(true);
   expect(results[1].used).toEqual([0, 1, 2, 3]);
+  expect(results[1].parks).toBe(results[1].changes);
+  expect(results[1].lostExtrusions).toEqual([]);
   for (const r of results) {
     expect(r.invalid).toEqual([]);
     expect(r.paths.every((t) => r.used.includes(t))).toBe(true);

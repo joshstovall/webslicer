@@ -122,3 +122,13 @@ This continuation removes the temporary restriction on cutting, splitting, and h
 - Mobile undo/redo uses the project menu. Closing the mobile drawer no longer also invokes the global deselect shortcut.
 - Current evidence: all 55 core tests and 23 affected browser checks pass. After the final memory cleanup, the cut/split and cancellation browser checks passed again. Five checks against the production build under `/webslicer/` pass, including phone/tablet controls, multi-tool export, surface painting and cutting a painted model before exporting its colored toolpaths. TypeScript/Vite build and `git diff --check` pass. Publication must be confirmed against the matching Actions run and live site.
 - Remaining full-goal work is unchanged: OBJ/vendor import fidelity; grouping/priority controls; filament physical limits/cooling; purge capacity, placement and quantity; native multi-plate archives; and a focused firmware/state/offline audit for the Bambu and U1 profiles. No physical printer verification has occurred.
+
+
+## Machine-state and offline-profile checkpoint
+
+- Previous painted-material release `a0015fd` deployed successfully in GitHub Actions run `38842633373`; its live painted-cut/export check passed. This supersedes the pending-publication wording above.
+- Fixed Bambu tool-change lift heights: use height reached so far, cap absolute change Z moves at the build height, match the planner's actual pending retraction, and use incoming filament calibration flow.
+- U1 changes now account for each independently parked head, implement the pinned machine configuration's 10 mm tool-change retraction contract, and wait for the incoming head's temperature before priming/recovery. Return moves restore clearance, XYZ, feed and extrusion modes/registers.
+- Official template sets are persistently cached by printer/firmware/revision. Reloading and selecting a previously used profile works without GitHub connectivity, while preserving editable machine settings. Incomplete template sets are repaired by fetching the full official set.
+- Source evidence and implementation bounds are in `docs/machine-state.md`. These changes use the current pinned U1 profile and its native writer contract, not an older cached template. Firmware macro internals and physical prints remain unverified.
+- Validation: all 62 core tests pass; 13 affected browser integration tests pass; the production build under `/webslicer/` passes; five production checks cover phone/tablet controls and generic, U1, and Bambu multi-color exports. `git diff --check` passes. Publication must be confirmed against the matching Actions run and live site. The full remaining requirements above retain their original scope.

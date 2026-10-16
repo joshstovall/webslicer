@@ -237,60 +237,82 @@ test("works without secure-context randomUUID on LAN devices", async ({
   await expect(page.locator(".object-row")).toHaveCount(2);
 });
 
-test("production-compatible multi-filament UI exports both tools", async ({
-  page,
-}) => {
-  await start(page);
-  await cube(page);
-  await page.getByRole("combobox", { name: "Printer", exact: true }).click();
-  await page
-    .getByRole("option", { name: "Custom multi-extruder FDM", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Scale (S)", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Toggle uniform scale", exact: true })
-    .click();
-  for (const [axis, value] of [
-    ["X", "20"],
-    ["Y", "20"],
-    ["Z", "5"],
-  ]) {
+for (const printerName of [
+  "Custom multi-extruder FDM",
+  "Snapmaker U1",
+  "Bambu Lab P1S + AMS",
+])
+  test(`production-compatible multi-filament UI exports both tools for ${printerName}`, async ({
+    page,
+  }) => {
+    await start(page);
+    await cube(page);
+    await page.getByRole("combobox", { name: "Printer", exact: true }).click();
+    await page.getByRole("option", { name: printerName, exact: true }).click();
+    await expect(
+      page.getByRole("combobox", { name: "Printer", exact: true }),
+    ).toHaveValue(printerName);
+    await page.getByRole("button", { name: "Scale (S)", exact: true }).click();
     await page
-      .getByRole("textbox", { name: `Scale ${axis}`, exact: true })
-      .fill(value);
-    await page.keyboard.press("Tab");
-  }
-  await page
-    .getByRole("button", { name: "Duplicate object (⌘D)", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Manage filaments", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Add filament", exact: true }).click();
-  await page.keyboard.press("Escape");
-  await page
-    .getByRole("combobox", { name: "Object filament", exact: true })
-    .click();
-  await page.getByRole("option", { name: "2. PLA 2", exact: true }).click();
-  await page.getByRole("button", { name: "Slice plate", exact: true }).click();
-  const exportButton = page.getByRole("button", {
-    name: "Export G-code",
-    exact: true,
+      .getByRole("button", { name: "Toggle uniform scale", exact: true })
+      .click();
+    for (const [axis, value] of [
+      ["X", "20"],
+      ["Y", "20"],
+      ["Z", "5"],
+    ]) {
+      await page
+        .getByRole("textbox", { name: `Scale ${axis}`, exact: true })
+        .fill(value);
+      await page.keyboard.press("Tab");
+    }
+    await page
+      .getByRole("button", { name: "Duplicate object (⌘D)", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Manage filaments", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Add filament", exact: true })
+      .click();
+    await page.keyboard.press("Escape");
+    await page
+      .getByRole("combobox", { name: "Object filament", exact: true })
+      .click();
+    await page.getByRole("option", { name: "2. PLA 2", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Slice plate", exact: true })
+      .click();
+    const exportButton = page.getByRole("button", {
+      name: printerName.startsWith("Bambu")
+        ? "Export print 3MF"
+        : "Export G-code",
+      exact: true,
+    });
+    await expect(exportButton).toBeVisible({ timeout: 60000 });
+    const downloading = page.waitForEvent("download");
+    await exportButton.click();
+    const file = await downloading;
+    const bytes = await readFile((await file.path())!);
+    const { unzipSync, strFromU8 } = await import("fflate");
+    const gcode = printerName.startsWith("Bambu")
+      ? strFromU8(unzipSync(bytes)["Metadata/plate_1.gcode"])
+      : bytes.toString("utf8");
+    if (printerName === "Snapmaker U1") {
+      expect(gcode).toContain("; park head");
+      expect(gcode).toContain("; match planned retraction");
+      expect(gcode).toContain("M109 S215 T1");
+    }
+    if (printerName.startsWith("Bambu")) expect(gcode).toContain("M620 S1A");
+    expect(gcode).toMatch(/^T0$/m);
+    expect(gcode).toMatch(/^T1$/m);
+    expect(
+      gcode
+        .split("\n")
+        .filter((l) => /NaN|Infinity|undefined/.test(l.split(";")[0])),
+    ).toEqual([]);
+    expect(gcode).toContain(";TYPE:purge tower");
   });
-  await expect(exportButton).toBeVisible({ timeout: 60000 });
-  const downloading = page.waitForEvent("download");
-  await exportButton.click();
-  const file = await downloading;
-  const gcode = await readFile((await file.path())!, "utf8");
-  expect(gcode).toMatch(/^T0$/m);
-  expect(gcode).toMatch(/^T1$/m);
-  expect(
-    gcode
-      .split("\n")
-      .filter((l) => /NaN|Infinity|undefined/.test(l.split(";")[0])),
-  ).toEqual([]);
-  expect(gcode).toContain(";TYPE:purge tower");
-});
 
 for (const cutPainted of [false, true])
   test(`production-compatible surface painting ${cutPainted ? "survives a cut" : "loads its local worker"} and exports colored layers`, async ({

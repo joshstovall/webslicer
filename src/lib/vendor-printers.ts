@@ -1,4 +1,5 @@
 import type { Printer } from "../types";
+import { get, set } from "idb-keyval";
 const BAMBU_REVISION = "79df7ae309be398ed30c9f397c13c9911c2edc57";
 const SNAPMAKER_REVISION = "89311782298309040ee28b9a183f33f0f5477b15";
 const bambu = (model: string, id: string, size = 256, tools = 16): Printer => ({
@@ -48,11 +49,48 @@ const names: Record<string, string> = {
   "bambu-a1": "A1",
   "bambu-a1-mini": "A1 mini",
 };
-const cache = new Map<string, Printer>();
-/** Import official, pinned templates on selection; retained in the local project. */
+const fields = ["startGcode", "endGcode", "toolChangeGcode"] as const;
+type Templates = Required<Pick<Printer, (typeof fields)[number]>>;
+const cache = new Map<string, Templates>();
+function validTemplates(value: unknown): value is Templates {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    fields.every((field) => {
+      const text = (value as Templates)[field];
+      return (
+        typeof text === "string" &&
+        text.trim().length > 0 &&
+        text.length <= 100000
+      );
+    })
+  );
+}
+/** Cache pinned templates separately from editable printer dimensions/settings. */
 export async function loadVendorPrinter(printer: Printer): Promise<Printer> {
-  if (!printer.firmware || printer.startGcode) return printer;
-  if (cache.has(printer.id)) return structuredClone(cache.get(printer.id)!);
+  if (!printer.firmware || validTemplates(printer)) return printer;
+  const preset = VENDOR_PRINTERS.find(
+    (p) => p.id === printer.id && p.firmware === printer.firmware,
+  );
+  if (!preset) throw new Error("Unknown official printer profile.");
+  const revision =
+    printer.firmware === "bambu" ? BAMBU_REVISION : SNAPMAKER_REVISION;
+  const key = `vendor-templates:v1:${printer.firmware}:${printer.id}:${revision}`;
+  const saved = cache.get(key) ?? (await get(key).catch(() => undefined));
+  if (validTemplates(saved)) {
+    const templates = {
+      startGcode: saved.startGcode,
+      endGcode: saved.endGcode,
+      toolChangeGcode: saved.toolChangeGcode,
+    };
+    cache.set(key, templates);
+    return {
+      ...printer,
+      ...templates,
+      profileRevision: revision,
+      profileSource: preset.profileSource,
+    };
+  }
   const json = async (url: string) => {
     const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
     if (!response.ok)
@@ -66,8 +104,11 @@ export async function loadVendorPrinter(printer: Printer): Promise<Printer> {
     "machine_end_gcode",
     "change_filament_gcode",
   ] as const;
-  const fields = ["startGcode", "endGcode", "toolChangeGcode"] as const;
-  const loaded = { ...printer };
+  const loaded = {
+    ...printer,
+    profileRevision: revision,
+    profileSource: preset.profileSource,
+  };
   if (printer.firmware === "bambu") {
     const model = names[printer.id];
     if (!model) throw new Error("Unknown Bambu profile.");
@@ -92,11 +133,19 @@ export async function loadVendorPrinter(printer: Printer): Promise<Printer> {
   for (const field of fields) {
     if (
       typeof loaded[field] !== "string" ||
-      !loaded[field] ||
+      !loaded[field]?.trim() ||
       loaded[field]!.length > 100000
     )
       throw new Error(`Official printer profile is missing ${field}.`);
   }
-  cache.set(printer.id, loaded);
+  const templates: Templates = {
+    startGcode: loaded.startGcode!,
+    endGcode: loaded.endGcode!,
+    toolChangeGcode: loaded.toolChangeGcode!,
+  };
+  cache.set(key, templates);
+  // Storage may be disabled/full. A successful online selection still works;
+  // saving the project also retains these templates in its portable payload.
+  await set(key, templates).catch(() => {});
   return structuredClone(loaded);
 }
