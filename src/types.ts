@@ -42,6 +42,8 @@ export interface MultiMaterialSettings {
   /** Independent Bambu station flush budget; omitted fields migrate from legacy tower budgets. */
   flushVolume?: number;
   flushVolumes?: Record<string, number>;
+  /** First block center in machine XY millimeters, keyed by build plate ID. */
+  towerPositions?: Record<string, { x: number; y: number; axis: "x" | "y" }>;
   supportTool: number;
 }
 export interface Printer {

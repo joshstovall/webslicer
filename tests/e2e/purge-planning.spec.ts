@@ -262,3 +262,158 @@ test("extreme directional budgets retain exact physical volume across thin layer
     true,
   );
 });
+
+test("tower structure ends at the final change while later model layers remain intact", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const result = await page.evaluate(async () => {
+    const { primitive } = await import("/src/lib/geometry.ts");
+    const { slicePlate } = await import("/src/lib/slicer.ts");
+    const { auditPurgeVolumes } = await import("/src/lib/purge-audit.ts");
+    const { PRINTERS, DEFAULT_SETTINGS } = await import("/src/lib/profiles.ts");
+    const { defaultFilament, DEFAULT_MULTI_MATERIAL } = await import(
+      "/src/lib/multimaterial.ts"
+    );
+    const settings = { ...DEFAULT_SETTINGS, adhesion: "none" };
+    const printer = PRINTERS.find((p) => p.id === "generic-multi")!;
+    const multi = { ...DEFAULT_MULTI_MATERIAL, purgeVolume: 20 };
+    const models = [0, 1].map((tool) => ({
+      ...primitive("cube", 1),
+      tool,
+      position: [tool ? 15 : -15, 0, 0],
+      scale: [0.4, 0.4, tool ? 0.06 : 0.3],
+    }));
+    const sliced = await slicePlate(
+      models,
+      printer,
+      settings,
+      () => {},
+      new AbortController().signal,
+      [0, 1].map((i) => defaultFilament(settings, i)),
+      multi,
+    );
+    let feature = "",
+      z = 0;
+    const primeHeights: number[] = [],
+      structureHeights: number[] = [];
+    for (const line of sliced.gcode.split("\n")) {
+      if (line.startsWith(";TYPE:")) feature = line.slice(6);
+      if (line.startsWith(";Z:")) z = Number(line.slice(3));
+      if (
+        /^G[01]\s/.test(line) &&
+        /\b[XY]-?[\d.]+/.test(line) &&
+        Number(line.match(/\bE(-?[\d.]+)/)?.[1] ?? 0) > 0
+      ) {
+        if (feature === "purge tower") primeHeights.push(z);
+        if (feature === "purge tower structure") structureHeights.push(z);
+      }
+    }
+    return {
+      changes: auditPurgeVolumes(sliced.gcode, 1.75, multi, true).length,
+      primeHeights,
+      structureHeights,
+      layers: sliced.layers.map((l) => ({
+        z: l.z,
+        features: [...l.features],
+        segments: [...l.segments],
+      })),
+    };
+  });
+  expect(result.changes).toBeGreaterThan(2);
+  const lastPrime = Math.max(...result.primeHeights);
+  expect(lastPrime).toBeLessThan(2);
+  expect(Math.max(...result.structureHeights)).toBe(lastPrime);
+  const later = result.layers.filter((l) => l.z > lastPrime + 0.001);
+  expect(later.length).toBeGreaterThan(10);
+  expect(later.every((l) => !l.features.includes(5))).toBe(true);
+  expect(Math.max(...later.map((l) => l.z))).toBeGreaterThan(5.5);
+  // No leftover trips to the removed tower: all later endpoints stay on the
+  // tall model, whose machine XY footprint is [109,117] × [124,132].
+  // The first later layer can start with travel from the last retained tower.
+  for (const l of later.slice(1))
+    for (let i = 0; i < l.segments.length; i += 3) {
+      expect(l.segments[i]).toBeGreaterThan(103);
+      expect(l.segments[i]).toBeLessThan(123);
+      expect(l.segments[i + 1]).toBeGreaterThan(118);
+      expect(l.segments[i + 1]).toBeLessThan(138);
+    }
+});
+
+test("manual towers honor U1 origin offsets and Bambu sparse AMS slots", async ({
+  page,
+}) => {
+  test.setTimeout(180000);
+  await page.goto("/");
+  const results = await page.evaluate(async () => {
+    const { primitive } = await import("/src/lib/geometry.ts");
+    const { slicePlate } = await import("/src/lib/slicer.ts");
+    const { VENDOR_PRINTERS, loadVendorPrinter } = await import(
+      "/src/lib/vendor-printers.ts"
+    );
+    const { DEFAULT_SETTINGS } = await import("/src/lib/profiles.ts");
+    const { defaultFilament, DEFAULT_MULTI_MATERIAL } = await import(
+      "/src/lib/multimaterial.ts"
+    );
+    const output = [];
+    for (const id of ["snapmaker-u1", "bambu-x1c"]) {
+      const printer = await loadVendorPrinter(
+        VENDOR_PRINTERS.find((p) => p.id === id)!,
+      );
+      const tools = id === "snapmaker-u1" ? [0, 1, 2, 3] : [7, 15];
+      const settings = { ...DEFAULT_SETTINGS, adhesion: "none" };
+      const models = tools.map((tool, i) => ({
+        ...primitive("cube", 2),
+        tool,
+        scale: [0.2, 0.2, 0.04],
+        position: [-15 + i * 10, 0, 0],
+      }));
+      const result = await slicePlate(
+        models,
+        printer,
+        settings,
+        () => {},
+        new AbortController().signal,
+        Array.from({ length: printer.toolCount! }, (_, i) =>
+          defaultFilament(settings, i),
+        ),
+        {
+          ...DEFAULT_MULTI_MATERIAL,
+          purgeVolume: 20,
+          towerPositions: {
+            "1": { x: 140, y: 130, axis: "x" }, // Deliberately irrelevant other plate.
+            "2": { x: 40, y: 50, axis: "y" },
+          },
+        },
+      );
+      const xs: number[] = [],
+        ys: number[] = [];
+      for (const l of result.layers)
+        for (let i = 0; i < l.features.length; i++)
+          if (l.features[i] === 5)
+            for (const end of [0, 3]) {
+              xs.push(l.segments[i * 6 + end]);
+              ys.push(l.segments[i * 6 + end + 1]);
+            }
+      output.push({
+        id,
+        minX: Math.min(...xs),
+        maxX: Math.max(...xs),
+        minY: Math.min(...ys),
+        maxY: Math.max(...ys),
+        count: tools.length - 1,
+      });
+    }
+    return output;
+  });
+  for (const result of results) {
+    const size = result.maxX - result.minX;
+    expect(size).toBeGreaterThan(10);
+    expect((result.minX + result.maxX) / 2).toBeCloseTo(40, 2);
+    expect(result.minY + size / 2).toBeCloseTo(50, 2);
+    expect(result.maxY).toBeCloseTo(
+      50 + (result.count - 1) * (size + 1.42) + size / 2,
+      2,
+    );
+  }
+});

@@ -102,6 +102,23 @@ export function validPurgeOverrides(value: unknown, minimum = 1): boolean {
     );
   });
 }
+export function validTowerPositions(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.entries(value).every(
+    ([key, position]) =>
+      /^[1-9]\d*$/.test(key) &&
+      Number.isSafeInteger(Number(key)) &&
+      position &&
+      typeof position === "object" &&
+      !Array.isArray(position) &&
+      typeof position.x === "number" &&
+      Number.isFinite(position.x) &&
+      typeof position.y === "number" &&
+      Number.isFinite(position.y) &&
+      (position.axis === "x" || position.axis === "y"),
+  );
+}
 export function materialErrors(
   models: Model[],
   printer: Printer,
@@ -166,6 +183,10 @@ export function materialErrors(
   if (!validPurgeOverrides(multi.purgeVolumes))
     errors.push(
       "Invalid directional purge volumes. Use 1–2000 mm³ per change.",
+    );
+  if (!validTowerPositions(multi.towerPositions))
+    errors.push(
+      "Invalid manual tower position. Use finite X/Y coordinates and an X or Y row direction.",
     );
   if (
     (multi.flushVolume !== undefined &&

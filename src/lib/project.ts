@@ -5,6 +5,7 @@ import {
   defaultFilament,
   DEFAULT_MULTI_MATERIAL,
   validPurgeOverrides,
+  validTowerPositions,
   independentPurgeBudgets,
 } from "./multimaterial";
 import { DEFAULT_SETTINGS, PRINTERS } from "./profiles";
@@ -205,6 +206,10 @@ export function validateProject(p: unknown): Project {
     !Number.isFinite(multiMaterial.purgeVolume) ||
     !validPurgeOverrides(multiMaterial.purgeVolumes) ||
     !validPurgeOverrides(multiMaterial.flushVolumes, 0) ||
+    !validTowerPositions(multiMaterial.towerPositions) ||
+    Object.keys(multiMaterial.towerPositions ?? {}).some(
+      (id) => !v.plates.includes(Number(id)),
+    ) ||
     !Number.isFinite(multiMaterial.flushVolume) ||
     multiMaterial.flushVolume! < 0 ||
     multiMaterial.flushVolume! > 2000 ||

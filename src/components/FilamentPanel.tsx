@@ -32,6 +32,7 @@ interface Props {
   printer: Printer;
   settings: Settings;
   usedTools: number[];
+  plate: number;
   onChange: (filaments: Filament[], multi: MultiMaterialSettings) => void;
 }
 export function FilamentPanel({
@@ -40,9 +41,19 @@ export function FilamentPanel({
   printer,
   settings,
   usedTools,
+  plate,
   onChange,
 }: Props) {
   const multi = independentPurgeBudgets(storedMulti);
+  const position = multi.towerPositions?.[String(plate)];
+  const setPosition = (
+    next?: NonNullable<MultiMaterialSettings["towerPositions"]>[string],
+  ) => {
+    const positions = { ...multi.towerPositions };
+    if (next) positions[String(plate)] = next;
+    else delete positions[String(plate)];
+    onChange(filaments, { ...multi, towerPositions: positions });
+  };
   const [purgeFrom, setPurgeFrom] = useState("0"),
     [purgeTo, setPurgeTo] = useState("1");
   const from = Math.min(Number(purgeFrom), filaments.length - 1);
@@ -339,10 +350,80 @@ export function FilamentPanel({
           {multi.purgeTower && (
             <Stack gap="sm">
               <Text size="xs" c="dimmed">
-                Tower blocks are placed automatically with clearance for models,
-                supports and adhesion. Leave room on the plate for each color
-                change.
+                Tower placement for plate {plate}. Clearance includes models,
+                supports, adhesion and reserved bed areas. The tower ends at the
+                final color change.
               </Text>
+              <Select
+                label="Tower placement"
+                value={position ? "manual" : "automatic"}
+                allowDeselect={false}
+                data={[
+                  { value: "automatic", label: "Automatic" },
+                  { value: "manual", label: "Manual" },
+                ]}
+                onChange={(mode) =>
+                  setPosition(
+                    mode === "manual"
+                      ? {
+                          x: (printer.bedOrigin?.[0] ?? 0) + printer.bed[0] / 2,
+                          y:
+                            (printer.bedOrigin?.[1] ?? 0) +
+                            printer.bed[1] * 0.15,
+                          axis: "x",
+                        }
+                      : undefined,
+                  )
+                }
+              />
+              {position && (
+                <>
+                  <Text size="xs" c="dimmed">
+                    Set the first block’s center in machine X/Y millimeters,
+                    measured from the front-left origin. Additional blocks
+                    extend along the selected positive axis. Slicing checks the
+                    complete footprint and reports collisions without moving
+                    your tower.
+                  </Text>
+                  <Group grow wrap="nowrap" align="start">
+                    <NumberInput
+                      label="Tower center X"
+                      value={position.x}
+                      suffix=" mm"
+                      decimalScale={2}
+                      onChange={(x) =>
+                        typeof x === "number" &&
+                        Number.isFinite(x) &&
+                        setPosition({ ...position, x })
+                      }
+                    />
+                    <NumberInput
+                      label="Tower center Y"
+                      value={position.y}
+                      suffix=" mm"
+                      decimalScale={2}
+                      onChange={(y) =>
+                        typeof y === "number" &&
+                        Number.isFinite(y) &&
+                        setPosition({ ...position, y })
+                      }
+                    />
+                  </Group>
+                  <Select
+                    label="Tower row direction"
+                    value={position.axis}
+                    allowDeselect={false}
+                    data={[
+                      { value: "x", label: "+X · left to right" },
+                      { value: "y", label: "+Y · front to back" },
+                    ]}
+                    onChange={(axis) =>
+                      (axis === "x" || axis === "y") &&
+                      setPosition({ ...position, axis })
+                    }
+                  />
+                </>
+              )}
               <NumberInput
                 label="Tower priming volume per change"
                 description="Each transition deposits this amount plus the material needed to support the tower."

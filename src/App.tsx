@@ -730,6 +730,25 @@ function App() {
     commit((p) => ({ ...p, plates: [...p.plates, id], activePlate: id }));
     setSelected(null);
   }
+  function removePlate(plate: number) {
+    if (project.plates.length < 2) return;
+    commit((old) => {
+      const towerPositions = { ...old.multiMaterial?.towerPositions };
+      delete towerPositions[String(plate)];
+      return {
+        ...old,
+        plates: old.plates.filter((id) => id !== plate),
+        models: old.models.filter((m) => m.plate !== plate),
+        activePlate: old.plates.find((id) => id !== plate)!,
+        multiMaterial: {
+          ...DEFAULT_MULTI_MATERIAL,
+          ...old.multiMaterial,
+          towerPositions,
+        },
+      };
+    });
+    setSelected(null);
+  }
   function fitToBed() {
     if (!model) return;
     const parts = transformWholeAssembly
@@ -2103,22 +2122,12 @@ function App() {
                       aria-label={`Remove plate ${p}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        commit((old) => ({
-                          ...old,
-                          plates: old.plates.filter((n) => n !== p),
-                          models: old.models.filter((m) => m.plate !== p),
-                          activePlate: old.plates.find((n) => n !== p)!,
-                        }));
+                        removePlate(p);
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.stopPropagation();
-                          commit((old) => ({
-                            ...old,
-                            plates: old.plates.filter((n) => n !== p),
-                            models: old.models.filter((m) => m.plate !== p),
-                            activePlate: old.plates.find((n) => n !== p)!,
-                          }));
+                          removePlate(p);
                         }
                       }}
                     >
@@ -2353,6 +2362,7 @@ function App() {
           settings={project.settings}
           printer={project.printer}
           usedTools={usedTools}
+          plate={project.activePlate}
           onChange={(filaments, multiMaterial) =>
             commit((p) => ({
               ...p,

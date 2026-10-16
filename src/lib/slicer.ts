@@ -32,6 +32,8 @@ export async function slicePlate(
   multi: MultiMaterialSettings = DEFAULT_MULTI_MATERIAL,
 ): Promise<SliceResult> {
   const errors = materialErrors(models, printer, filaments, settings, multi);
+  if (new Set(models.map((m) => m.plate)).size > 1)
+    errors.push("Slice one build plate at a time.");
   if (errors.length) return Promise.reject(new Error(errors.join("\n")));
   const parts = await prepareMaterials(
     models,
@@ -185,6 +187,8 @@ export async function slicePlate(
               stratumExactPurge: true,
               stratumPurgeVolumes: multi.purgeVolumes,
               stratumFilamentFlows: filaments.map((f) => f.flow),
+              stratumTowerPosition:
+                multi.towerPositions?.[String(models[0].plate)],
             },
           },
           location.origin,

@@ -9,6 +9,36 @@ const transpose = (r) => ({
   maxY: r.maxX,
 });
 
+/** Remove tower paths above the last real change before G-code derives XYZ/E.
+ * Kiri emits a feature label only on the first record of a run. It remains
+ * modal across records and layers. Preserve the layer arrays and their custom
+ * height/slice/parameter properties; a filtered copy would lose those fields.
+ */
+export function trimPurgeTower(layers) {
+  let feature,
+    lastPrime = -1;
+  for (let i = 0; i < layers.length; i++)
+    for (const out of layers[i]) {
+      feature = out.type ?? feature;
+      if (feature === "purge tower" && out.emit > 0) lastPrime = i;
+    }
+  feature = undefined;
+  let keptLayers = 0;
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i];
+    let kept = 0;
+    for (const out of layer) {
+      feature = out.type ?? feature;
+      const tower =
+        feature === "purge tower" || feature === "purge tower structure";
+      if (i <= lastPrime || !tower) layer[kept++] = out;
+    }
+    layer.length = kept;
+    if (kept) layers[keptLayers++] = layer;
+  }
+  layers.length = keptLayers;
+}
+
 export function placePurgeBlocks({
   width,
   depth,
@@ -16,6 +46,7 @@ export function placePurgeBlocks({
   count,
   obstacles,
   lineWidth,
+  position,
 }) {
   if (!count || !size) return [];
   if (
@@ -42,6 +73,47 @@ export function placePurgeBlocks({
     )
   )
     throw new Error("Invalid geometry bounds while placing the purge tower.");
+  if (position !== undefined) {
+    if (
+      !position ||
+      ![position.x, position.y].every(Number.isFinite) ||
+      !["x", "y"].includes(position.axis)
+    )
+      throw new Error("Invalid manual tower position.");
+    const placed = [];
+    for (let i = 0; i < count; i++) {
+      const x = position.x + (position.axis === "x" ? i * span : 0);
+      const y = position.y + (position.axis === "y" ? i * span : 0);
+      const rect = {
+        minX: x - span / 2,
+        maxX: x + span / 2,
+        minY: y - span / 2,
+        maxY: y + span / 2,
+      };
+      if (
+        rect.minX < limits.minX - EPS ||
+        rect.maxX > limits.maxX + EPS ||
+        rect.minY < limits.minY - EPS ||
+        rect.maxY > limits.maxY + EPS
+      )
+        throw new Error(
+          `Manual tower block ${i + 1} (${size.toFixed(1)} mm) is outside the usable bed. Move the tower center, change row direction, or use Automatic placement.`,
+        );
+      if (
+        obstacles.some(
+          (r) =>
+            overlapsX(rect, r) &&
+            rect.minY < r.maxY - EPS &&
+            rect.maxY > r.minY + EPS,
+        )
+      )
+        throw new Error(
+          `Manual tower block ${i + 1} overlaps model, support, adhesion or a reserved bed area. Move the tower center, change row direction, or use Automatic placement.`,
+        );
+      placed.push({ x, y, z: 0 });
+    }
+    return placed;
+  }
   for (const swap of [false, true])
     for (const reverse of [false, true]) {
       const bed = swap ? transpose(limits) : limits;
@@ -190,6 +262,22 @@ export function planKiriPurgeBlocks(widgets, settings, count) {
       count,
       lineWidth,
       obstacles: [...unique.values()],
+      // Stored positions use emitted machine coordinates, including firmware
+      // origin offsets (e.g. U1's +0.5/+1 mm). Packing uses centered bed XY.
+      position:
+        process.stratumTowerPosition === undefined
+          ? undefined
+          : {
+              ...process.stratumTowerPosition,
+              x:
+                process.stratumTowerPosition.x -
+                device.bedWidth / 2 -
+                (device.extruders[0].extOffsetX || 0),
+              y:
+                process.stratumTowerPosition.y -
+                device.bedDepth / 2 -
+                (device.extruders[0].extOffsetY || 0),
+            },
     }),
   };
 }
