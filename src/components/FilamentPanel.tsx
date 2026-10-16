@@ -266,8 +266,13 @@ export function FilamentPanel({
           />
           {multi.purgeTower && (
             <Stack gap="sm">
+              <Text size="xs" c="dimmed">
+                Tower blocks are placed automatically with clearance for models,
+                supports and adhesion. Leave room on the plate for each color
+                change.
+              </Text>
               <NumberInput
-                label="Purge volume per change"
+                label="Minimum purge volume per change"
                 value={multi.purgeVolume}
                 min={1}
                 max={2000}
@@ -290,7 +295,8 @@ export function FilamentPanel({
                         <Text size="xs" c="dimmed">
                           Override individual changes in mm³. Bambu uses these
                           volumes at its purge station. The tower reserves the
-                          largest volume needed by the active filaments.
+                          largest volume needed by the active filaments and may
+                          use more to maintain its structure.
                         </Text>
                         <Select
                           label="Purge from filament"

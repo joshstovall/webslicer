@@ -1,0 +1,27 @@
+# Purge tower planning
+
+When a plate uses multiple filaments and the tower is enabled, Stratum reserves one block per possible color change in a layer. The planner searches the entire rectangular build plate, including gaps between objects. Individual blocks can occupy separate free regions. It uses full-height model bounds, sliced normal/tree support extents, adhesion clearance, the deposited line width, and spacing between blocks. A plate without sufficient room fails with a specific message; it does not export an off-bed or overlapping tower as a fallback.
+
+Placement is conservative rectangular packing, not a proof that every physically possible arrangement has been found. It cannot place a block inside a concave object's bounding box. More efficient polygon packing and user-directed placement remain possible improvements. Existing Bambu/U1 presets use rectangular beds; belt printers are outside this adapter.
+
+The pinned Bambu X1C/P1S/P1P profiles exclude the 18 × 28 mm front-left corner. Tower packing avoids it, the viewport marks it, model validation reports overlaps, and Arrange preserves clearance even after centering. Generated extrusion segments are checked against the reserved region, including line width and segments crossing the region with both endpoints outside. The limit is derived from printer identity so older projects also receive it. A1/A1 mini profiles explicitly have no such exclusion. Sources: the pinned [X1C](https://github.com/bambulab/BambuStudio/blob/79df7ae309be398ed30c9f397c13c9911c2edc57/resources/profiles/BBL/machine/Bambu%20Lab%20X1%20Carbon%200.4%20nozzle.json), [P1S](https://github.com/bambulab/BambuStudio/blob/79df7ae309be398ed30c9f397c13c9911c2edc57/resources/profiles/BBL/machine/Bambu%20Lab%20P1S%200.4%20nozzle.json) and [P1P](https://github.com/bambulab/BambuStudio/blob/79df7ae309be398ed30c9f397c13c9911c2edc57/resources/profiles/BBL/machine/Bambu%20Lab%20P1P%200.4%20nozzle.json) machine profiles. This does not complete the broader firmware/physical-limits audit.
+
+The initial tool prints without consuming a color-change block. The first actual change and later changes receive tower extrusion before model/support extrusion. Current-tool parts are completed before changing tools. Unused support tools and empty sliced widgets do not reserve blocks. Unused blocks receive structural infill at each layer. A capacity overrun fails explicitly rather than silently skipping a purge.
+
+## Volume contract
+
+**Minimum purge volume per change** and its directional overrides are minimum planned tower volumes. The largest active requirement determines block capacity. Sizing accounts for the smallest actual sliced height (including adaptive layers and the first layer), nozzle/line widths, and the lowest active filament flow ratio. The pinned Kiri exporter computes a line's nominal cross-section as `pi * lineWidth * layerHeight / 4`; dividing volume only by layer height was insufficient. Boundary allowance accommodates clipped diagonal fill tracks.
+
+After material flow adjustments and before vendor macro expansion, Stratum audits the generated relative-extrusion G-code. Each change must deposit its directional minimum on the tower before the first model/support extrusion. E-only recovery, machine-change commands and off-bed vendor purging do not satisfy that check. A 0.05 mm³ numerical tolerance allows G-code rounding. Insufficient volume stops export.
+
+Blocks retain their full/sparse structural patterns. Consequently actual tower consumption can exceed the selected minimum, especially with varying layer heights or asymmetric directional volumes. Exact pair-specific tower extrusion optimization remains unfinished. Bambu's station flushing also uses the directional setting; station flushing and tower priming are currently additive. Separating those budgets is still required to reduce waste. U1's firmware priming macro internals and all physical prints remain unverified.
+
+## Implementation and evidence
+
+- Original helper: `public/engine/purge-planner.js`; generated-volume audit: `src/lib/purge-audit.ts`.
+- Incremental worker patch: `scripts/patch-purge-planning.py`, reproducible from `0559fa3`. Preserve upstream notices and update manifest checksums whenever the runtime changes.
+- Worker preparation errors are forwarded to the bridge. Failed planning releases the isolated frame/workers and permits a corrected plate to be sliced again.
+- Regression tests cover interior free-space packing, support/adhesion bounds, full plates, first-change priming, non-contiguous tools, varying layer heights/flow, directional volumes, and desktop/phone production workflows.
+- The new first-change and bed-edge regressions failed against the preceding release: its first change received zero tower volume, and placement went off-bed. Later 20 mm³ changes measured approximately 19 mm³ before the capacity correction. The full-plate regression also exposed swallowed preparation failures, now propagated explicitly.
+
+Sources: the pinned MIT-licensed GridSpace [preparation implementation](https://github.com/GridSpace/grid-apps/blob/d138275bbe9d4e4030d8cb8b2dcf66607da9295a/src/kiri/mode/fdm/work/prepare.js) and [G-code exporter](https://github.com/GridSpace/grid-apps/blob/d138275bbe9d4e4030d8cb8b2dcf66607da9295a/src/kiri/mode/fdm/work/export.js), checked against the vendored runtime. These are software planning checks, not physical printer validation.

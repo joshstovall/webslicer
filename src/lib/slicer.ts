@@ -11,6 +11,8 @@ import { processProfile, deviceProfile } from "./profiles";
 import { compileMachineGcode } from "./machine-gcode";
 import { applyFilamentSettings } from "./filament-gcode";
 import { parseGcode } from "./gcode";
+import { auditPurgeVolumes } from "./purge-audit";
+import { bedExclusions, segmentHitsRectangle } from "./bed-exclusions";
 import {
   defaultFilament,
   DEFAULT_MULTI_MATERIAL,
@@ -62,14 +64,15 @@ export async function slicePlate(
       if (error) reject(error);
       else {
         try {
+          const planned = applyFilamentSettings(
+            gcode!,
+            printer,
+            settings,
+            filaments,
+          );
+          auditPurgeVolumes(planned, printer.filament, multi);
           const result = parseGcode(
-            compileMachineGcode(
-              applyFilamentSettings(gcode!, printer, settings, filaments),
-              printer,
-              settings,
-              filaments,
-              multi,
-            ),
+            compileMachineGcode(planned, printer, settings, filaments, multi),
             {
               diameter: printer.filament,
               density: settings.density,
@@ -79,9 +82,26 @@ export async function slicePlate(
           );
           if (!result.layers.length)
             throw new Error("No printable layers were generated.");
+          const excluded = bedExclusions(printer, false);
           for (const layer of result.layers) {
             for (let i = 0; i < layer.features.length; i++) {
               if (layer.features[i] === 4) continue;
+              const n = i * 6;
+              if (
+                excluded.some((r) =>
+                  segmentHitsRectangle(
+                    layer.segments[n],
+                    layer.segments[n + 1],
+                    layer.segments[n + 3],
+                    layer.segments[n + 4],
+                    r,
+                    settings.lineWidth / 2,
+                  ),
+                )
+              )
+                throw new Error(
+                  "Generated extrusion enters a reserved bed area. Move models and their adhesion away from the marked corner.",
+                );
               for (const endpoint of [0, 3]) {
                 const offset = i * 6 + endpoint;
                 if (
@@ -142,6 +162,9 @@ export async function slicePlate(
                     : multi.supportTool,
               }),
               outputMaxFlowrate: Math.max(...filaments.map((f) => f.maxFlow)),
+              stratumPurgeVolume: multi.purgeVolume,
+              stratumPurgeVolumes: multi.purgeVolumes,
+              stratumFilamentFlows: filaments.map((f) => f.flow),
             },
           },
           location.origin,

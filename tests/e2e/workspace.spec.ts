@@ -303,7 +303,23 @@ for (const printerName of [
       expect(gcode).toContain("; match planned retraction");
       expect(gcode).toContain("M109 S215 T1");
     }
-    if (printerName.startsWith("Bambu")) expect(gcode).toContain("M620 S1A");
+    if (printerName.startsWith("Bambu")) {
+      expect(gcode).toContain("M620 S1A");
+      const { parseGcode } = await import("../../src/lib/gcode");
+      const tower: number[][] = [];
+      for (const layer of parseGcode(gcode).layers)
+        for (let i = 0; i < layer.features.length; i++) {
+          if (layer.features[i] !== 5) continue;
+          for (const endpoint of [0, 3])
+            tower.push([
+              layer.segments[i * 6 + endpoint],
+              layer.segments[i * 6 + endpoint + 1],
+            ]);
+        }
+      expect(tower.length).toBeGreaterThan(20);
+      expect(tower.every(([x, y]) => x > 18.2 || y > 28.2)).toBe(true);
+      await page.screenshot({ path: "/tmp/stratum-bambu-exclusion.png" });
+    }
     expect(gcode).toMatch(/^T0$/m);
     expect(gcode).toMatch(/^T1$/m);
     expect(

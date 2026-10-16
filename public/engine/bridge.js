@@ -104,9 +104,31 @@ window.addEventListener("message", async (e) => {
       engineClient.slicePost(engine.settings, resolve),
     );
     send({ type: "progress", progress: 0.8, stage: "Planning toolpaths" });
-    await engine.prepare();
+    await new Promise((resolve, reject) =>
+      engineClient.prepare(
+        engine.settings,
+        (progress) =>
+          send({
+            type: "progress",
+            progress: 0.8 + progress * 0.15,
+            stage: "Planning toolpaths",
+          }),
+        (result) =>
+          result?.error ? reject(new Error(result.error)) : resolve(),
+      ),
+    );
     send({ type: "progress", progress: 0.96, stage: "Generating G-code" });
-    const gcode = await engine.export();
+    const gcode = await new Promise((resolve, reject) => {
+      const lines = [];
+      engineClient.export(
+        engine.settings,
+        (line) => {
+          if (typeof line === "string") lines.push(line);
+        },
+        (_, error) =>
+          error ? reject(new Error(error)) : resolve(lines.join("\r\n")),
+      );
+    });
     if (!gcode || !/G1 .*E/.test(gcode))
       throw new Error(
         "The engine produced no extrusion paths. Check the model and settings.",

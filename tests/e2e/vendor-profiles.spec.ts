@@ -255,3 +255,41 @@ test("large AMS slot IDs and all four U1 heads compile with only assigned tools"
     expect(r.changes).toBeGreaterThan(2);
   }
 });
+
+test("Bambu reserved bed areas also reject generated extrusion from direct slicing calls", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const message = await page.evaluate(async () => {
+    const { loadVendorPrinter, VENDOR_PRINTERS } = await import(
+      "/src/lib/vendor-printers.ts"
+    );
+    const { primitive } = await import("/src/lib/geometry.ts");
+    const { slicePlate } = await import("/src/lib/slicer.ts");
+    const { DEFAULT_SETTINGS } = await import("/src/lib/profiles.ts");
+    const printer = await loadVendorPrinter(
+      VENDOR_PRINTERS.find((p) => p.id === "bambu-p1s")!,
+    );
+    const model = {
+      ...primitive("cube", 1),
+      position: [-120, -120, 0],
+      scale: [0.2, 0.2, 0.05],
+    };
+    try {
+      await slicePlate(
+        [model],
+        printer,
+        { ...DEFAULT_SETTINGS, adhesion: "none" },
+        () => {},
+        new AbortController().signal,
+      );
+      return "";
+    } catch (e) {
+      return (e as Error).message;
+    }
+  });
+  expect(message).toContain("Generated extrusion enters a reserved bed area");
+  await expect(
+    page.locator('iframe[title="Local slicing engine"]'),
+  ).toHaveCount(0);
+});

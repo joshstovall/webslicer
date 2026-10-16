@@ -13,7 +13,7 @@
     {
       "path": "public/engine/kiri-work.js",
       "url": "https://grid.space/lib/pack/kiri-work.js",
-      "sha256": "ae138dd2b11a236efb632e3661e29b353a2edf8c6c2229917d6876230e72a789",
+      "sha256": "0ce6a262d394df385bb0d6d37035d666edf416fccc74c6fee2f7e22192de5657",
       "modified": true
     },
     {
@@ -33,6 +33,16 @@
       "url": "https://grid.space/wasm/manifold.wasm",
       "sha256": "8f8cb69137af5dd87950b60aa88d7613cde48e4af45b43b8464473191cc9dbe6",
       "modified": false
+    }
+  ],
+  "localSupportFiles": [
+    {
+      "path": "public/engine/purge-planner.js",
+      "sha256": "09336f17154c7be5c6ba06032471b480a604f46208489c44a29e05e3275c0274"
+    },
+    {
+      "path": "public/engine/bridge.js",
+      "sha256": "112b2f19f62d31eecbbd46a5d82ee509274da61bd7dd256d864414eb2f3825fd"
     }
   ]
 }

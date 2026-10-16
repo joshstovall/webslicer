@@ -5,6 +5,7 @@ import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { Model, Printer, SliceResult, Vec3 } from "../types";
 import { FEATURE_COLORS } from "../types";
 import { geometryOf } from "../lib/geometry";
+import { bedExclusions } from "../lib/bed-exclusions";
 import { Button, Alert } from "@mantine/core";
 import type { PaintStroke } from "../lib/surface-paint";
 import type { PaintSettings } from "./PaintPanel";
@@ -382,6 +383,19 @@ export function Viewport(props: ViewportProps) {
     plate.position.z = -1.65;
     plate.receiveShadow = true;
     s.bed.add(plate);
+    for (const r of bedExclusions(props.printer)) {
+      const reserved = new THREE.Mesh(
+        new THREE.PlaneGeometry(r.maxX - r.minX, r.maxY - r.minY),
+        new THREE.MeshBasicMaterial({
+          color: "#cf735e",
+          transparent: true,
+          opacity: 0.7,
+          depthWrite: false,
+        }),
+      );
+      reserved.position.set((r.minX + r.maxX) / 2, (r.minY + r.maxY) / 2, 0.08);
+      s.bed.add(reserved);
+    }
     const lines: number[] = [];
     for (let x = -w / 2; x <= w / 2; x += 10)
       lines.push(x, -d / 2, 0.03, x, d / 2, 0.03);
@@ -429,7 +443,7 @@ export function Viewport(props: ViewportProps) {
     axes.position.set(-w / 2, -d / 2, 0);
     s.bed.add(axes);
     s.dirty();
-  }, [props.printer.bed]);
+  }, [props.printer.bed, props.printer.id, props.printer.firmware]);
   useEffect(() => {
     const s = state.current;
     if (!s) return;

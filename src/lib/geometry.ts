@@ -2,6 +2,7 @@ import { newId } from "./id";
 import * as THREE from "three";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import { importObj } from "./import-obj";
+import { bedExclusions, rectanglesOverlap } from "./bed-exclusions";
 import { STLExporter } from "three/addons/exporters/STLExporter.js";
 import { import3mf, type ModelImport } from "./import-3mf";
 import type { Model, Vec3, Printer } from "../types";
@@ -100,6 +101,7 @@ export function modelVolume(m: Model) {
 }
 export function validatePlate(models: Model[], p: Printer, margin = 0) {
   const errors: string[] = [];
+  const excluded = bedExclusions(p);
   const active = models.filter((m) => m.visible);
   if (!active.length) errors.push("Add a visible model to the plate first.");
   const groups = new Map<string, THREE.Box3>();
@@ -110,6 +112,18 @@ export function validatePlate(models: Model[], p: Printer, margin = 0) {
   }
   active.forEach((m) => {
     const b = boundsOf(m);
+    if (
+      excluded.some((r) =>
+        rectanglesOverlap(
+          { minX: b.min.x, minY: b.min.y, maxX: b.max.x, maxY: b.max.y },
+          r,
+          margin,
+        ),
+      )
+    )
+      errors.push(
+        `${m.name} overlaps a reserved bed area. Move it away from the marked corner.`,
+      );
     if (
       b.min.x < -p.bed[0] / 2 + margin - 0.01 ||
       b.max.x > p.bed[0] / 2 - margin + 0.01 ||
@@ -156,13 +170,26 @@ export function arrangeModels(models: Model[], p: Printer, gap = 8): Model[] {
     y = -p.bed[1] / 2 + gap,
     row = 0;
   const placed = new Map<string, Model>();
+  const excluded = bedExclusions(p);
   for (const { parts, bounds, size } of units) {
     if (size.x > p.bed[0] - gap * 2 || size.y > p.bed[1] - gap * 2)
       throw new Error(`${parts[0].name} is too large to arrange.`);
-    if (x + size.x > p.bed[0] / 2 - gap) {
-      x = -p.bed[0] / 2 + gap;
-      y += row + gap;
-      row = 0;
+    for (;;) {
+      if (x + size.x > p.bed[0] / 2 - gap) {
+        x = -p.bed[0] / 2 + gap;
+        y += row + gap;
+        row = 0;
+      }
+      const collision = excluded.find((r) =>
+        rectanglesOverlap(
+          { minX: x, minY: y, maxX: x + size.x, maxY: y + size.y },
+          r,
+          gap,
+        ),
+      );
+      if (!collision) break;
+      x = collision.maxX + gap;
+      row = Math.max(row, collision.maxY - y);
     }
     if (y + size.y > p.bed[1] / 2 - gap)
       throw new Error(
@@ -183,7 +210,7 @@ export function arrangeModels(models: Model[], p: Printer, gap = 8): Model[] {
   const bounds = new THREE.Box3();
   placed.forEach((m) => bounds.union(boundsOf(m)));
   const center = bounds.getCenter(new THREE.Vector3());
-  return models.map((m) => {
+  const centered = models.map((m) => {
     const n = placed.get(m.id)!;
     return {
       ...n,
@@ -194,6 +221,22 @@ export function arrangeModels(models: Model[], p: Printer, gap = 8): Model[] {
       ] as Vec3,
     };
   });
+  // Centering a tightly packed plate can move a corner part back into an
+  // exclusion. Retain its already-valid packed coordinates in that case.
+  if (
+    centered.some((m) => {
+      const b = boundsOf(m);
+      return excluded.some((r) =>
+        rectanglesOverlap(
+          { minX: b.min.x, minY: b.min.y, maxX: b.max.x, maxY: b.max.y },
+          r,
+          gap,
+        ),
+      );
+    })
+  )
+    return models.map((m) => placed.get(m.id)!);
+  return centered;
 }
 
 export async function importModels(
