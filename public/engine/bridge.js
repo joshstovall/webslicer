@@ -109,6 +109,9 @@ window.addEventListener("message", async (e) => {
       widget.meta.file = part.name;
       widget.anno.extruder = part.tool;
       widget.anno.stratumSupportPaint = part.supportPaintTriangles;
+      widget.anno.stratumWallModifiers = part.modifiers
+        ?.filter((m) => m.kind === "walls")
+        .map((m) => ({ ...m, vertices: Array.from(m.vertices) }));
       widget.anno.stratumProcessModifiers = part.modifiers
         ?.filter((m) => m.kind === "process")
         .map((m) => ({ ...m, vertices: Array.from(m.vertices) }));

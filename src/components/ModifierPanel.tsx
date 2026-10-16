@@ -87,11 +87,10 @@ export function ModifierPanel({
     >
       <Stack gap="sm">
         <Text size="sm">
-          Change infill, speed, flow or support contacts inside a volume on{" "}
-          {model.name}
+          Change walls, infill, speed, flow or support contacts inside a volume
+          on {model.name}
           {model.assemblyId ? " and its linked parts" : ""}. Later volumes take
-          priority within each setting. Walls and top/bottom surfaces stay
-          intact.
+          priority within each setting.
         </Text>
         <Text size="xs" c="dimmed">
           Modifier positions, rotations and scales are relative to this part.
@@ -207,12 +206,16 @@ export function ModifierPanel({
                 },
                 { value: "support-blocker", label: "Block support contacts" },
                 { value: "process", label: "Print speed and flow" },
+                { value: "walls", label: "Wall count" },
               ]}
               allowDeselect={false}
               onChange={(v) =>
                 v &&
                 update({
                   kind: v as ModifierMesh["kind"],
+                  ...(v === "walls" && item.walls === undefined
+                    ? { walls: 4 }
+                    : {}),
                   ...(v === "process" &&
                   item.speedPercent === undefined &&
                   item.flowPercent === undefined
@@ -229,6 +232,28 @@ export function ModifierPanel({
                 Enable Automatic or Enforced only supports in print settings.
                 Green volumes enforce; red volumes block.
               </Text>
+            ) : item.kind === "walls" ? (
+              <>
+                <NumberInput
+                  label="Modifier wall count"
+                  min={0}
+                  max={20}
+                  allowDecimal={false}
+                  value={item.walls ?? 4}
+                  onChange={(v) =>
+                    typeof v === "number" &&
+                    Number.isInteger(v) &&
+                    v >= 0 &&
+                    v <= 20 &&
+                    update({ walls: v })
+                  }
+                />
+                <Text size="sm">
+                  Blue volumes change the number of model walls. Infill and
+                  surface skins meet the resulting wall thickness. Zero removes
+                  walls within the volume. Later wall volumes take priority.
+                </Text>
+              </>
             ) : item.kind === "process" ? (
               <>
                 <Text size="sm">

@@ -83,7 +83,6 @@ export function splitRegionMove(a, b, masks) {
   const dx = b.x - a.x,
     dy = b.y - a.y,
     length2 = dx * dx + dy * dy;
-  if (length2 < EPS * EPS) return [{ end: 1, speed: 1, flow: 1 }];
   const minX = Math.min(a.x, b.x),
     minY = Math.min(a.y, b.y),
     maxX = Math.max(a.x, b.x),
@@ -124,16 +123,29 @@ export function splitRegionMove(a, b, masks) {
       x = a.x + dx * mid,
       y = a.y + dy * mid;
     let speed = 1,
-      flow = 1;
+      flow = 1,
+      walls;
     for (const mask of masks)
       if (mask.polys.some((p) => contains(p, x, y))) {
         if (mask.speedPercent !== undefined) speed = mask.speedPercent / 100;
         if (mask.flowPercent !== undefined) flow = mask.flowPercent / 100;
+        if (mask.walls !== undefined) walls = mask.walls;
       }
     const previous = result.at(-1);
-    if (previous && previous.speed === speed && previous.flow === flow)
+    if (
+      previous &&
+      previous.speed === speed &&
+      previous.flow === flow &&
+      previous.walls === walls
+    )
       previous.end = hi;
-    else result.push({ end: hi, speed, flow });
+    else
+      result.push({
+        end: hi,
+        speed,
+        flow,
+        ...(walls === undefined ? {} : { walls }),
+      });
   }
   return result;
 }
@@ -217,7 +229,12 @@ export async function applyProcessModifiers(layers, widgets, process, api) {
                   m.name + ": regional settings require closed cross-sections.",
                 );
               const polys = api.polygons.nest(section.groups ?? []);
-              if (polys.length) masks.push({ ...m, polys });
+              if (polys.length)
+                masks.push({
+                  polys,
+                  speedPercent: m.speedPercent,
+                  flowPercent: m.flowPercent,
+                });
             }
           cache.set(out.widget, masks);
         }

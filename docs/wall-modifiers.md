@@ -1,0 +1,25 @@
+# Regional wall counts
+
+Open **Object modifiers**, add or import a closed volume, and choose **Wall count**. Blue volumes override the number of perimeter walls from 0–20. Zero removes wall paths inside the volume; it does not remove the model or its infill/skins. Later enabled wall volumes take precedence. Other modifier effects retain their independent priority.
+
+Volumes use the owning part's coordinates and follow its transforms. Linked material parts share them; unrelated objects do not. Numeric transforms, order and settings survive undo/redo, recovery, portable projects, and material-preserving cuts/splits. Spiral vase mode rejects enabled modifiers during preflight.
+
+## Geometry and planning
+
+The original MIT `wall-modifiers.js` adapter operates before native skin projection and infill generation. It slices each volume at the actual model sampling plane, including fixed, adaptive and manual layer schedules. Raft offsets are applied later, so the volumes remain in model coordinates.
+
+For each requested count, the adapter invokes the existing engine's shell generator on the complete model cross-section, including holes and the selected thin-wall behavior. It trims the resulting perimeter **centerlines** to the regions with that count. It never offsets a mask boundary into an artificial wall. Complete loops remain closed; partially retained loops become open paths, joined across the original seam where appropriate. Point-level thin-wall flow/skip annotations and wall depth are retained, including coincident points that mark a non-extruding return along a collapsed wall. A native decode filter previously discarded compensated walls when their polygon area collapsed to zero; it now retains nonzero-length paths with thin-wall compensation. The native path planner is explicitly told to keep these fragments open and start at an endpoint.
+
+The fill area is assembled from each count's native fill offset, clipped to exclusive modifier regions and united. Sparse infill and surface skins therefore meet the local wall thickness using the normal overlap setting. Layer-to-layer skin projections use the physical model boundary for affected objects, avoiding artificial surfaces when a modifier changes wall thickness. Travel routing uses a closed physical boundary rather than an open perimeter fragment. Sparse-infill caching is disabled for owners with wall modifiers so changes in mask height cannot reuse stale fill. Entirely neutral wall overrides leave the native geometry untouched.
+
+Regional shell generation preserves each perimeter's offset depth while nesting a separate copy for infill. This prevents native infill nesting from resetting the innermost perimeter depth. The planner honors inside-out, outside-in and alternating wall order by grouping modified paths by depth, then choosing nearby paths within that depth. Open fragments necessarily introduce additional path starts; the existing retraction and cooling pipeline still applies. Regional speed/flow modifiers operate afterward, followed by spool flow limits and layer cooling.
+
+The incremental worker patch is reproducible from `d20016e` using `scripts/patch-wall-modifiers.py`. Upstream API references: pinned [shell generation](https://github.com/GridSpace/grid-apps/blob/d138275bbe9d4e4030d8cb8b2dcf66607da9295a/src/kiri/mode/fdm/work/post.js), [slice/top representation](https://github.com/GridSpace/grid-apps/blob/d138275bbe9d4e4030d8cb8b2dcf66607da9295a/src/kiri/core/slice.js), and [path preparation](https://github.com/GridSpace/grid-apps/blob/d138275bbe9d4e4030d8cb8b2dcf66607da9295a/src/kiri/mode/fdm/work/prepare.js). Existing MIT notices remain intact; asset hashes are in `vendor-manifest.json`.
+
+## Limits and remaining work
+
+Tests check real perimeter lengths against global-count references, hole walls, rotated nonuniform volumes, fixed/adaptive/manual schedules, linked/unrelated tools, supported rafts, zero-count priority, skin extents, stale infill, and compensated 0.6 mm walls without duplicate extrusion. Desktop/phone checks cover controls, recovery, undo/redo, portable downloads and exported G-code. Core tests cover clipping continuity, holes, thin-point metadata, validation, transforms and cut preservation.
+
+Counts describe requested walls. Narrow geometry may fit fewer walls; native thin-wall behavior still applies. Sub-layer features can fall between sampling planes. Closed-volume validation, per-owner limits of 32 volumes and 500,000 combined triangles, and positive finite transforms apply as with other modifiers. Complex volumes and many distinct counts increase slicing work.
+
+Regional top/bottom skin-count overrides, direct modifier transform handles, branching tree supports and the broader slicer roadmap remain unfinished. Software verification does not establish physical print quality; Bambu/U1 print validation remains required.

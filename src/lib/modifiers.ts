@@ -14,6 +14,7 @@ export const MODIFIER_PATTERNS = [
 export interface WorldModifier {
   name: string;
   kind?: ModifierMesh["kind"];
+  walls?: number;
   speedPercent?: number;
   flowPercent?: number;
   vertices: Float32Array;
@@ -38,9 +39,15 @@ export function validateModifiers(value: unknown): ModifierMesh[] | undefined {
       typeof m.name !== "string" ||
       typeof m.enabled !== "boolean" ||
       (m.kind !== undefined &&
-        !["infill", "support-enforcer", "support-blocker", "process"].includes(
-          m.kind,
-        )) ||
+        ![
+          "infill",
+          "support-enforcer",
+          "support-blocker",
+          "process",
+          "walls",
+        ].includes(m.kind)) ||
+      ((m.kind === "walls" || m.walls !== undefined) &&
+        (!Number.isInteger(m.walls) || m.walls < 0 || m.walls > 20)) ||
       [m.speedPercent, m.flowPercent].some(
         (v) =>
           v !== undefined &&
@@ -114,6 +121,7 @@ export function worldModifiers(model: Model): WorldModifier[] {
       return {
         name: m.name,
         kind: m.kind,
+        walls: m.walls,
         speedPercent: m.speedPercent,
         flowPercent: m.flowPercent,
         vertices,
