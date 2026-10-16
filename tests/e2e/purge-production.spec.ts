@@ -147,6 +147,12 @@ test("an older Bambu project shows its reserved corner and arrangement clears th
     .getByRole("button", { name: /Arrange/ })
     .first()
     .click();
+  await page
+    .getByRole("button", { name: "Arrange objects", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Arrange plate", exact: true }),
+  ).toHaveCount(0);
   await expect(page.locator(".workspace-alert")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Slice plate", exact: true }),

@@ -1,3 +1,4 @@
+import { checkModelGeometry } from "./placement";
 import { supportInterfaceErrors } from "./support-interface-settings";
 import { treeSettingErrors } from "./tree-settings";
 import {
@@ -68,6 +69,13 @@ export async function slicePlate(
   if (new Set(models.map((m) => m.plate)).size > 1)
     errors.push("Slice one build plate at a time.");
   if (errors.length) return Promise.reject(new Error(errors.join("\n")));
+  const adhesionMargin =
+    settings.adhesion === "brim"
+      ? settings.brimWidth
+      : settings.adhesion === "skirt"
+        ? settings.skirtDistance + settings.skirtLoops * settings.lineWidth
+        : 0;
+  await checkModelGeometry(models, printer, adhesionMargin, signal, onProgress);
   const prepared = await prepareMaterials(
     models,
     Math.max(settings.lineWidth * 2, settings.layerHeight * 3),

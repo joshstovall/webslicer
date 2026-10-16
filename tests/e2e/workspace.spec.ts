@@ -40,6 +40,12 @@ test("desktop workspace, transformations, duplicate, arrange, undo and redo", as
   await page
     .getByRole("button", { name: "Arrange plate", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Arrange objects", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Arrange plate", exact: true }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Undo (⌘Z)" }).click();
   await page.getByRole("button", { name: "Undo (⌘Z)" }).click();
   await expect(page.locator(".object-row")).toHaveCount(1);

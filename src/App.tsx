@@ -1,3 +1,5 @@
+import { ArrangeDialog } from "./components/ArrangeDialog";
+import { arrangePlate, type ArrangeOptions } from "./lib/placement";
 import { StepImportDialog } from "./components/StepImportDialog";
 import type { StepOptions } from "./lib/step-mesh";
 import { ProcessImportDialog } from "./components/ProcessImportDialog";
@@ -229,6 +231,12 @@ function App() {
     [errors, setErrors] = useState<string[]>([]),
     [importing, setImporting] = useState(false),
     [loadingPrinter, setLoadingPrinter] = useState(false);
+  const [arranging, setArranging] = useState(false);
+  const [arrangeOptions, setArrangeOptions] = useState<ArrangeOptions>({
+    gap: 8,
+    edge: 8,
+    rotate: true,
+  });
   const importActive = useRef(false);
   const cadAbort = useRef<AbortController | null>(null);
   const [stepImport, setStepImport] = useState<{
@@ -534,9 +542,24 @@ function App() {
       copies.find((m) => m.name === `${model.name} copy`)?.id ?? copies[0].id,
     );
   }
-  function arrange() {
+  async function arrange() {
+    if (abortRef.current || importing) return;
+    const snapshot = projectRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setBusy(true);
+    setArranging(true);
+    setProgress(0);
+    setStage("Loading outline arranger");
     try {
-      const arranged = arrangeModels(
+      const s = snapshot.settings;
+      const adhesion =
+        s.adhesion === "brim"
+          ? s.brimWidth
+          : s.adhesion === "skirt"
+            ? s.skirtDistance + s.skirtLoops * s.lineWidth
+            : 0;
+      const arranged = await arrangePlate(
         activeModels.filter(
           (m) =>
             m.visible ||
@@ -545,15 +568,33 @@ function App() {
                 (n) => n.visible && n.assemblyId === m.assemblyId,
               )),
         ),
-        project.printer,
+        snapshot.printer,
+        { ...arrangeOptions, edge: Math.max(arrangeOptions.edge, adhesion) },
+        controller.signal,
+        (value, label) => {
+          setProgress(value * 100);
+          setStage(label);
+        },
       );
+      if (controller.signal.aborted) return;
+      if (projectRef.current !== snapshot)
+        throw new Error(
+          "The project changed during arrangement. Retry with the current plate.",
+        );
+      abortRef.current = null;
       commit((p) => ({
         ...p,
         models: p.models.map((m) => arranged.find((n) => n.id === m.id) || m),
       }));
-      notify("Models arranged on the build plate.");
+      setModal(null);
+      notify("Models arranged using their projected outlines.");
     } catch (e) {
-      notify((e as Error).message, "orange");
+      if ((e as Error).name !== "AbortError")
+        notify((e as Error).message, "orange");
+    } finally {
+      abortRef.current = null;
+      setBusy(false);
+      setArranging(false);
     }
   }
   function addPrimitive(kind: string) {
@@ -804,6 +845,7 @@ function App() {
       project.printer,
       margin,
       s.supports !== "disabled" && !s.vase,
+      false, // Exact outline/solid checks run in the cancellable slicing worker stage.
     );
     if (s.layerHeight > project.printer.nozzle * 0.8)
       warnings.push(
@@ -1222,7 +1264,10 @@ function App() {
           <Menu.Dropdown>
             <Menu.Item
               leftSection={<LayoutGrid size={15} />}
-              onClick={arrange}
+              onClick={() => {
+                notifications.clean();
+                setModal("arrange");
+              }}
               disabled={busy || !activeModels.length}
             >
               Arrange plate
@@ -2007,7 +2052,10 @@ function App() {
               <span className="toolbar-divider" />
               <IconButton
                 label="Arrange plate"
-                onClick={arrange}
+                onClick={() => {
+                  notifications.clean();
+                  setModal("arrange");
+                }}
                 disabled={!activeModels.length || busy}
               >
                 <LayoutGrid size={18} />
@@ -2506,6 +2554,20 @@ function App() {
       >
         {mobilePanel === "settings" ? settingsPanel : objectPanel}
       </Drawer>
+      {modal === "arrange" && (
+        <ArrangeDialog
+          options={arrangeOptions}
+          working={arranging}
+          progress={progress}
+          stage={stage}
+          onChange={setArrangeOptions}
+          onStart={() => void arrange()}
+          onClose={() => {
+            if (arranging) abortRef.current?.abort();
+            setModal(null);
+          }}
+        />
+      )}
       {stepImport && (
         <StepImportDialog
           name={stepImport.name}
@@ -3355,7 +3417,8 @@ function App() {
               <Text size="sm">
                 Multi-tool FDM slicing with normal or branching tree supports,
                 adaptive and manual variable layers, spiral vase, multiple
-                infill patterns, and skirt/brim/raft. Multiple objects and
+                infill patterns, and skirt/brim/raft. Outline-aware arrangement
+                with spacing and quarter-turn controls, multiple objects and
                 plates, G-code inspection, and reusable print presets are
                 supported. Imported G-code previews include tool-colored arcs,
                 circles and helices.

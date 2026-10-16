@@ -105,6 +105,7 @@ export function validatePlate(
   p: Printer,
   margin = 0,
   allowElevated = false,
+  geometryChecks = true,
 ) {
   const errors: string[] = [];
   const excluded = bedExclusions(p);
@@ -119,6 +120,7 @@ export function validatePlate(
   active.forEach((m) => {
     const b = boundsOf(m);
     if (
+      geometryChecks &&
       excluded.some((r) =>
         rectanglesOverlap(
           { minX: b.min.x, minY: b.min.y, maxX: b.max.x, maxY: b.max.y },
@@ -144,7 +146,7 @@ export function validatePlate(
     if (!allowElevated && groups.get(m.assemblyId ?? m.id)!.min.z > 0.01)
       errors.push(`${m.name} is floating above the bed. Use “Drop to bed”.`);
   });
-  for (let i = 0; i < active.length; i++)
+  for (let i = 0; geometryChecks && i < active.length; i++)
     for (let j = i + 1; j < active.length; j++) {
       if (active[i].assemblyId && active[i].assemblyId === active[j].assemblyId)
         continue;
