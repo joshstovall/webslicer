@@ -5,7 +5,8 @@ import {
   partsBounds,
 } from "./lib/assemblies";
 import { bindImportedMaterials } from "./lib/import-materials";
-import { colorAboveHeight } from "./lib/height-colors";
+import { editModelSelection } from "./lib/material-edits";
+import type { MaterialEdit } from "./lib/edit-material-regions";
 import { paintSurface, type PaintStroke } from "./lib/surface-paint";
 import { PaintPanel, type PaintSettings } from "./components/PaintPanel";
 import { newId } from "./lib/id";
@@ -124,7 +125,6 @@ import { loadVendorPrinter } from "./lib/vendor-printers";
 import { FilamentPanel } from "./components/FilamentPanel";
 import { defaultFilament, DEFAULT_MULTI_MATERIAL } from "./lib/multimaterial";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { cutModel, splitModel } from "./lib/mesh-tools";
 const initialProject = (): Project => ({
   version: 1,
   name: "Helix planter",
@@ -189,6 +189,7 @@ function App() {
   const [viewCommand, setViewCommand] = useState({ view: "home", tick: 0 }),
     [wireframe, setWireframe] = useState(false),
     [busy, setBusy] = useState(false),
+    [editing, setEditing] = useState(false),
     [progress, setProgress] = useState(0),
     [stage, setStage] = useState(""),
     [playing, setPlaying] = useState(false);
@@ -666,69 +667,99 @@ function App() {
       true,
     );
   }
-  function applyHeightColor() {
-    if (!model) return;
+  async function editObject(operation: MaterialEdit) {
+    if (!model || abortRef.current) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setBusy(true);
+    setProgress(0);
+    setStage("Editing material regions");
+    setEditing(true);
+    setModal(null);
     try {
-      const slot = Number(heightTool),
-        filament = filaments[slot];
-      if (!filament) throw new Error("Choose a configured filament.");
-      const models = colorAboveHeight(
+      const result = await editModelSelection(
         project.models,
         model.id,
-        cutHeight,
-        slot,
-        filament.color,
+        operation,
+        filaments.map((f) => f.color),
+        Math.max(
+          project.settings.lineWidth * 2,
+          project.settings.layerHeight * 3,
+        ),
         transformWholeAssembly,
+        controller.signal,
+        (value, label) => {
+          setProgress(value * 100);
+          setStage(label);
+        },
       );
-      const ids = new Set(project.models.map((m) => m.id));
-      commit((p) => ({ ...p, models }));
-      setSelected(models.find((m) => !ids.has(m.id))?.id ?? model.id);
-      setModal(null);
-      notify("Height color applied. The parts remain linked in place.");
-    } catch (e) {
-      notify((e as Error).message, "red");
+      if (controller.signal.aborted)
+        throw new DOMException("Editing cancelled.", "AbortError");
+      let models = result.models;
+      if (operation.kind === "cut") {
+        try {
+          const arranged = arrangeModels(
+            models.filter((m) => m.plate === project.activePlate),
+            project.printer,
+          );
+          models = [
+            ...models.filter((m) => m.plate !== project.activePlate),
+            ...arranged,
+          ];
+        } catch {
+          notify(
+            "The cut succeeded, but the pieces need manual arrangement.",
+            "orange",
+          );
+        }
+      }
+      abortRef.current = null;
+      if (
+        !models.every((m, i) => m === project.models[i]) ||
+        models.length !== project.models.length
+      )
+        commit((p) => ({ ...p, models }));
+      setSelected(result.selectedId);
+      notify(
+        operation.kind === "height"
+          ? "Height color applied. Existing colors below the boundary are preserved."
+          : operation.kind === "cut"
+            ? "Model cut with capped surfaces and preserved materials."
+            : result.pieces < 2
+              ? "This object is one connected piece."
+              : `Split into ${result.pieces} pieces with preserved materials.`,
+      );
+    } catch (error) {
+      notify(
+        (error as Error).name === "AbortError"
+          ? "Editing cancelled."
+          : (error as Error).message,
+        (error as Error).name === "AbortError" ? "forest" : "red",
+      );
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setEditing(false);
+      setBusy(false);
     }
+  }
+  function applyHeightColor() {
+    const slot = Number(heightTool);
+    if (!filaments[slot]) {
+      notify("Choose a configured filament.", "red");
+      return;
+    }
+    void editObject({ kind: "height", height: cutHeight, tool: slot });
   }
   function cut() {
-    if (!model) return;
-    try {
-      const pieces = cutModel(model, cutHeight, cutKeep, cutFlip);
-      const all = [...activeModels.filter((m) => m.id !== model.id), ...pieces];
-      let arranged = all;
-      try {
-        arranged = arrangeModels(all, project.printer);
-      } catch {}
-      commit((p) => ({
-        ...p,
-        models: [
-          ...p.models.filter((m) => m.plate !== p.activePlate),
-          ...arranged,
-        ],
-      }));
-      setSelected(pieces[0]?.id || null);
-      setModal(null);
-      notify("Model cut with capped surfaces.");
-    } catch (e) {
-      notify((e as Error).message, "red");
-    }
+    void editObject({
+      kind: "cut",
+      height: cutHeight,
+      keep: cutKeep as "both" | "lower" | "upper",
+      flipUpper: !cutFlip,
+    });
   }
   function split() {
-    if (!model) return;
-    try {
-      const pieces = splitModel(model);
-      if (pieces.length < 2) {
-        notify("This model is a single connected mesh.");
-        return;
-      }
-      commit((p) => ({
-        ...p,
-        models: p.models.flatMap((m) => (m.id === model.id ? pieces : [m])),
-      }));
-      setSelected(pieces[0].id);
-      notify(`Split into ${pieces.length} connected parts.`);
-    } catch (e) {
-      notify((e as Error).message, "red");
-    }
+    void editObject({ kind: "split" });
   }
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -745,6 +776,7 @@ function App() {
         el.matches("input,textarea,select") ||
         el.isContentEditable ||
         modal ||
+        mobilePanel ||
         busy
       )
         return;
@@ -774,7 +806,7 @@ function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [selected, model, modal, busy, undo, redo]);
+  }, [selected, model, modal, mobilePanel, busy, undo, redo]);
   async function connectPrinter(send = false) {
     setNetworkBusy(true);
     try {
@@ -1208,7 +1240,11 @@ function App() {
                   disabled={busy}
                   leftSection={<Scissors size={14} />}
                   onClick={() => {
-                    const b = boundsOf(model);
+                    const b = partsBounds(
+                      transformWholeAssembly
+                        ? assemblyParts(activeModels, model)
+                        : [model],
+                    );
                     setCutHeight(Number(((b.min.z + b.max.z) / 2).toFixed(2)));
                     setModal("cut");
                   }}
@@ -1587,7 +1623,13 @@ function App() {
               <IconButton
                 label="Cut model"
                 onClick={() => {
-                  setCutHeight(size[2] / 2);
+                  if (!model) return;
+                  const b = partsBounds(
+                    transformWholeAssembly
+                      ? assemblyParts(activeModels, model)
+                      : [model],
+                  );
+                  setCutHeight((b.min.z + b.max.z) / 2);
                   setModal("cut");
                 }}
                 disabled={!model || busy}
@@ -2332,6 +2374,23 @@ function App() {
         </Stack>
       </Modal>
       <Modal
+        opened={editing}
+        onClose={() => abortRef.current?.abort()}
+        title="Editing materials"
+        closeOnClickOutside={false}
+      >
+        <Stack>
+          <Text size="sm">{stage}</Text>
+          <Progress value={progress} animated />
+          <Text size="xs" c="dimmed">
+            Your original model is kept until the edit finishes.
+          </Text>
+          <Button variant="default" onClick={() => abortRef.current?.abort()}>
+            Cancel edit
+          </Button>
+        </Stack>
+      </Modal>
+      <Modal
         opened={modal === "height-color"}
         onClose={() => setModal(null)}
         title="Color by height"
@@ -2339,7 +2398,8 @@ function App() {
         <Stack>
           <Text size="sm" c="dimmed">
             Assign a filament above a horizontal boundary. Parts stay aligned
-            and move together. Repeat to add more color bands.
+            and move together. Colors below the boundary are preserved. Repeat
+            to add more color bands.
           </Text>
           <NumberInput
             label="Color boundary above bed"
@@ -2373,8 +2433,8 @@ function App() {
       >
         <Stack>
           <Text size="sm" c="dimmed">
-            Split the transformed model at a horizontal plane and cap the cut
-            surfaces.
+            Split the selected object at a horizontal plane and cap the cut
+            surfaces. Painted colors become linked solid material parts.
           </Text>
           <NumberInput
             label="Height above bed"
@@ -2382,7 +2442,15 @@ function App() {
             value={cutHeight}
             onChange={(v) => typeof v === "number" && setCutHeight(v)}
             min={0.1}
-            max={model ? boundsOf(model).max.z - 0.01 : undefined}
+            max={
+              model
+                ? partsBounds(
+                    transformWholeAssembly
+                      ? assemblyParts(activeModels, model)
+                      : [model],
+                  ).max.z - 0.01
+                : undefined
+            }
             step={1}
           />
           <Select
@@ -2710,11 +2778,12 @@ function App() {
               <Text size="sm" mt="md">
                 Assign filament to each part, paint surfaces, or use Color by
                 height to create linked bands. Bambu AMS and Snapmaker U1
-                profiles are available. Clear surface paint before cutting or
-                splitting a painted part. Support painting, STEP, resin slicing,
-                and full Orca project settings are not supported. 3MF imports
-                component geometry, material assignments, and painted facets.
-                Generated paths still need printer-specific validation.
+                profiles are available. Cuts, splits, and height colors preserve
+                painted materials as linked solid parts. Support painting, STEP,
+                resin slicing, and full Orca project settings are not supported.
+                3MF imports component geometry, material assignments, and
+                painted facets. Generated paths still need printer-specific
+                validation.
               </Text>
               <Text size="sm" mt="md">
                 <a

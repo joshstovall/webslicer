@@ -16,4 +16,10 @@ Format references:
 
 Manifold is Apache-2.0 licensed; the license is included at `public/wasm/MANIFOLD-LICENSE.txt`. The package lock records its exact version and package integrity. No Orca source implementation is bundled in this decoder.
 
-Still to integrate: cutting/splitting/height-editing an already painted surface currently asks to clear painting first. Keep this interaction in the active goal; it is not an intentional reduction of the requested editing scope.
+Cuts, splits, and height assignments now run through the same cancellable material worker when paint or a multipart object requires it. They convert paint into closed, assigned material parts. A cut caps each material region, links all colors on each side, then grounds/flips the whole side together. Height assignment preserves all colors below its plane and unions the chosen material above it. The assembly-edit toggle determines whether the selected part or its whole linked object is edited.
+
+Splitting first unions the regions to find physical connected objects, then intersects each object's volume with each material. Touching colors stay together. Decomposition can produce separate cavity surfaces; signed-volume classification and solid-angle containment reattach cavities to their enclosing shell, leaving a solid island inside a cavity as a separate object. Splitting an already connected object is a no-op and retains editable paint.
+
+Edits preserve hidden parts without subtracting them from visible geometry. Cancellation or failure leaves the original project intact; a completed operation is one undo entry. The 200-part portable-project limit is checked before replacing the source. Converted solid parts retain filament colors, relative placement, and visibility through recovery and export.
+
+Material processing retains Manifold's internal topology through edits. Before exporting Float32 triangles, it simplifies sub-micron Boolean slivers with a 0.0001 mm tolerance. This prevents repeat edits from losing material through tiny collapsed edges. Regression tests include nonuniform scaling, rotation, repeated cuts, cavity/island separation, and per-material volume conservation.

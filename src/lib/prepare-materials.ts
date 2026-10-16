@@ -6,12 +6,14 @@ import {
   type MaterialPart,
   type PreparedPart,
 } from "./material-regions";
+import type { MaterialEdit, EditedPart } from "./edit-material-regions";
 export function worldMaterialParts(
   models: Model[],
   defaultDepth = 0.8,
+  includeHidden = false,
 ): MaterialPart[] {
   return models
-    .filter((m) => m.visible)
+    .filter((m) => includeHidden || m.visible)
     .map((m) => {
       let paintVertices: Float32Array | undefined;
       if (m.paintTriangles) {
@@ -26,9 +28,10 @@ export function worldMaterialParts(
       }
       return {
         name: m.name,
+        visible: m.visible,
         assemblyId: m.assemblyId,
         tool: m.tool ?? 0,
-        vertices: mergedVertices([m]),
+        vertices: mergedVertices([m.visible ? m : { ...m, visible: true }]),
         paintVertices,
         faceTools: m.faceTools?.slice(),
         paintDepth: m.paintDepth ?? defaultDepth,
@@ -45,6 +48,28 @@ export async function prepareMaterials(
     throw new DOMException("Slicing cancelled.", "AbortError");
   const parts = worldMaterialParts(models, depth);
   if (!needsMaterialPreparation(parts)) return parts;
+  return runMaterialWorker(parts, signal, onProgress);
+}
+export async function editMaterials(
+  models: Model[],
+  depth: number,
+  operation: MaterialEdit,
+  signal: AbortSignal,
+  onProgress: (value: number, stage: string) => void,
+): Promise<EditedPart[]> {
+  return runMaterialWorker(
+    worldMaterialParts(models, depth, true),
+    signal,
+    onProgress,
+    operation,
+  ) as Promise<EditedPart[]>;
+}
+async function runMaterialWorker(
+  parts: MaterialPart[],
+  signal: AbortSignal,
+  onProgress: (value: number, stage: string) => void,
+  operation?: MaterialEdit,
+): Promise<PreparedPart[]> {
   onProgress(0, "Preparing material regions");
   if (signal.aborted)
     throw new DOMException("Slicing cancelled.", "AbortError");
@@ -82,10 +107,14 @@ export async function prepareMaterials(
       } else if (e.data.parts) {
         cleanup();
         resolve(e.data.parts);
-      } else onProgress(e.data.progress * 0.15, "Preparing material regions");
+      } else
+        onProgress(
+          e.data.progress * (operation ? 1 : 0.15),
+          operation ? "Editing material regions" : "Preparing material regions",
+        );
     };
     worker.postMessage(
-      parts,
+      operation ? { parts, operation } : parts,
       parts.flatMap((p) => [
         p.vertices.buffer,
         ...(p.paintVertices ? [p.paintVertices.buffer] : []),

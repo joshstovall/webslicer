@@ -2,6 +2,7 @@ import type { Manifold, ManifoldToplevel } from "manifold-3d";
 
 export interface MaterialPart {
   name: string;
+  visible?: boolean;
   assemblyId?: string;
   tool: number;
   vertices: Float32Array;
@@ -11,6 +12,7 @@ export interface MaterialPart {
 }
 export interface PreparedPart {
   name: string;
+  visible?: boolean;
   assemblyId?: string;
   tool: number;
   vertices: Float32Array;
@@ -51,6 +53,8 @@ export function prepareMaterialRegions(
   api: ManifoldToplevel,
   parts: MaterialPart[],
   progress: (value: number) => void = () => {},
+  mergeByTool = true,
+  onRegion?: (part: PreparedPart, solid: Manifold) => void,
 ): PreparedPart[] {
   const { Manifold, Mesh } = api;
   const live = new Set<Manifold>();
@@ -71,7 +75,10 @@ export function prepareMaterialRegions(
     return keep(new Manifold(mesh));
   }
   function toVertices(solid: Manifold) {
-    const mesh = solid.getMesh(),
+    // Remove sub-micron Boolean slivers before converting double-precision
+    // topology to Float32 triangle soup for the editor and slicing engine.
+    const clean = keep(solid.simplify(0.0001));
+    const mesh = clean.getMesh(),
       vertices = new Float32Array(mesh.triVerts.length * 3);
     mesh.triVerts.forEach((v, i) =>
       vertices.set(
@@ -79,6 +86,7 @@ export function prepareMaterialRegions(
         i * 3,
       ),
     );
+    dispose(clean);
     return vertices;
   }
   function union(solids: Manifold[]) {
@@ -163,7 +171,9 @@ export function prepareMaterialRegions(
   try {
     const groups = new Map<string, MaterialPart[]>();
     parts.forEach((p, i) => {
-      const key = p.assemblyId ?? `individual-${i}`;
+      const key =
+        (p.assemblyId ?? `individual-${i}`) +
+        (!mergeByTool && p.visible === false ? ":hidden" : "");
       groups.set(key, [...(groups.get(key) ?? []), p]);
     });
     const output: PreparedPart[] = [];
@@ -177,14 +187,18 @@ export function prepareMaterialRegions(
         !overlaps &&
         !group.some((p) => p.faceTools?.some((t) => t !== p.tool))
       ) {
-        output.push(
-          ...group.map(({ name, assemblyId, tool, vertices }) => ({
+        for (const source of group) {
+          const { name, visible, assemblyId, tool, vertices } = source;
+          const part = {
             name,
+            visible,
             assemblyId,
             tool,
             vertices,
-          })),
-        );
+          };
+          output.push(part);
+          if (onRegion) onRegion(part, solidOf(vertices));
+        }
         done += group.length;
         progress(done / parts.length);
         continue;
@@ -213,20 +227,39 @@ export function prepareMaterialRegions(
             if (occupied) dispose(occupied);
             occupied = next;
           }
-          byTool.set(region.tool, [...(byTool.get(region.tool) ?? []), solid]);
+          if (mergeByTool)
+            byTool.set(region.tool, [
+              ...(byTool.get(region.tool) ?? []),
+              solid,
+            ]);
+          else {
+            const prepared = {
+              name: part.name,
+              visible: part.visible,
+              assemblyId,
+              tool: region.tool,
+              vertices: toVertices(solid),
+            };
+            onRegion?.(prepared, solid);
+            output.push(prepared);
+            dispose(solid);
+          }
         }
         progress(++done / parts.length);
       }
       if (occupied) dispose(occupied);
       for (const [tool, solids] of byTool) {
         const merged = union(solids);
-        if (!merged.isEmpty())
-          output.push({
+        if (!merged.isEmpty()) {
+          const prepared = {
             name: `${group[0].name} · filament ${tool + 1}`,
             assemblyId,
             tool,
             vertices: toVertices(merged),
-          });
+          };
+          onRegion?.(prepared, merged);
+          output.push(prepared);
+        }
         dispose(merged);
       }
     }

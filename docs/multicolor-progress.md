@@ -14,7 +14,7 @@ User objective: **add full support for multi color printers, and add profiles fo
 - Snapmaker's complex tool-change statement block is implemented as an explicit adapter for by-layer printing. Its official source stays visible but this field is read-only in the editor; the adapter is in machine-gcode.ts. Review this adapter thoroughly before final completion.
 - Bambu print-package export: `.gcode.3mf`, G-code MD5, model ID, filament usage metadata and thumbnails. Reopening print packages is supported. Generic/U1 exports remain plain G-code.
 
-## Evidence
+## Earlier evidence (before surface painting and material edits)
 
 - `npm test`: 37 core tests pass (geometry/assemblies/height bands, project, G-code/material accounting, directional purge values, template interpreter and package integrity).
 - Full browser suite: 23 of 24 passed before the high-slot purge placement fix; the new high-slot test exposed an actual defect. After the fix all 12 affected engine/vendor/height/assembly tests passed. The other 12 tests had passed in that full run.
@@ -25,15 +25,15 @@ User objective: **add full support for multi color printers, and add profiles fo
 
 ## Remaining work for the full goal
 
-1. Preserve 3MF/OBJ multi-part assemblies, relative placement, imported material assignments and colors. Component import is now implemented and tested; vendor metadata/OBJ material-group coverage and painted triangles remain incomplete.
-2. Make assembly-aware transforms, packing, grounding, collision validation and multi-widget grouping consistent. Grouped transforms and packing are implemented and tested. Actual solid overlap resolution remains incomplete.
-3. Complete and verify material editing workflows for full multi-color use. Height assignments pass desktop/phone and actual slicing tests. Surface editing and painted 3MF segmentation remain incomplete; retained core triangle colors are explicitly blocked from slicing to prevent silent loss.
+1. Preserve 3MF/OBJ multi-part assemblies, relative placement, imported material assignments and colors. Component import, painted triangle trees, and core vertex/triangle material regions are implemented and tested. Further vendor metadata and OBJ material-group coverage remains required.
+2. Make assembly-aware transforms, packing, grounding, collision validation and multi-widget grouping consistent. Grouped transforms, packing, and actual solid-overlap resolution are implemented and tested. Explicit assembly grouping/ungrouping and overlap-priority editing controls still need completion.
+3. Complete and verify material editing workflows for full multi-color use. Surface paint, painted 3MF segmentation, and height assignments generate real material toolpaths. Cuts, splits, and height edits now preserve painted material volumes. Continue the complete editing and import audit; do not equate these tested operations with all requested multi-color support.
 4. Dedicated support filament now passes real normal/tree support path tests. Continue reviewing per-filament/global-settings interactions, physical material limits and cooling.
 5. Review purge planning: directional overrides, unused slots, initial nonzero tools and AMS slots 8/16 now pass tests; the block index placement defect is fixed. Crowded-plate placement, exact quantities/capacity and pair-specific tower extrusion still need refinement.
 6. Native Bambu package previews now use imported printer dimensions and preserve original archive downloads. External archive/multi-plate metadata handling and U1 firmware macro assumptions still need a focused audit.
 7. Audit printer-specific start/end/tool-change state restoration (XYZ/E/feed, retract, temperature), physical bounds, firmware variants, and loading/error/offline behavior. Do not infer full machine support just from valid templates or green tests.
 8. README/help now describe current multi-tool behavior and unfinished features. Keep them aligned as the remaining features are implemented.
-9. Run relevant core/browser checks plus a production build under `/webslicer/`, verify desktop/phone renderings, then commit/push to `joshstovall/webslicer`, wait for GitHub Pages deployment and verify live workflows. Nothing from this goal has been pushed/deployed yet.
+9. Run relevant core/browser checks plus a production build under `/webslicer/`, verify desktop/phone renderings, then commit/push to `joshstovall/webslicer`, wait for GitHub Pages deployment and verify live workflows. Commit `adb585a` was published successfully and four live production checks passed. Further changes require their own verified deployment.
 10. Only mark the goal complete after auditing all requirements against current code/runtime evidence.
 
 ## Research sources
@@ -109,3 +109,16 @@ The user subsequently requested publication to `joshstovall` and GitHub Pages. T
 - Vendored engine checksums match `vendor-manifest.json`; `git diff --check` passes.
 - The existing Actions workflow deploys pushes to `main` to https://joshstovall.github.io/webslicer/. Deployment success must be confirmed from the corresponding Actions run and live site.
 - Publication does not resolve the remaining editing, firmware, purge-planning, metadata or physical-printer validation work listed above.
+
+
+## Painted model editing checkpoint
+
+This continuation removes the temporary restriction on cutting, splitting, and height-editing painted surfaces.
+
+- Painted edits run in the local material worker with progress/cancellation. They replace the source only after successful completion and preserve one-step undo/redo and project recovery.
+- Cuts preserve and cap each material region, retain whole-object/selected-part scope, group each side, and flip/ground all its colors together. Height assignments retain lower colors and merge the newly assigned upper material. Splitting groups by actual physical connectivity so touching colors stay in one object.
+- Hollow solids retain cavities. Solid islands in cavities remain separate objects. Hidden geometry is retained without subtracting from visible parts. Project part/mesh limits are checked before committing changes.
+- A transformed repeated-cut regression exposed material volume loss from Float32 Boolean slivers. Keeping original Manifold topology through each edit and simplifying exported geometry within 0.0001 mm fixes it; volume tests cover nonuniform scaling, rotations, hidden parts, and repeated cuts.
+- Mobile undo/redo uses the project menu. Closing the mobile drawer no longer also invokes the global deselect shortcut.
+- Current evidence: all 55 core tests and 23 affected browser checks pass. After the final memory cleanup, the cut/split and cancellation browser checks passed again. Five checks against the production build under `/webslicer/` pass, including phone/tablet controls, multi-tool export, surface painting and cutting a painted model before exporting its colored toolpaths. TypeScript/Vite build and `git diff --check` pass. Publication must be confirmed against the matching Actions run and live site.
+- Remaining full-goal work is unchanged: OBJ/vendor import fidelity; grouping/priority controls; filament physical limits/cooling; purge capacity, placement and quantity; native multi-plate archives; and a focused firmware/state/offline audit for the Bambu and U1 profiles. No physical printer verification has occurred.
