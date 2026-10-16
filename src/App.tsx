@@ -208,6 +208,11 @@ function App() {
     [stage, setStage] = useState(""),
     [playing, setPlaying] = useState(false);
   const [modifierDraft, setModifierDraft] = useState<ModifierMesh[]>([]);
+  const [modifierSelected, setModifierSelected] = useState("");
+  const [modifierTool, setModifierTool] = useState<
+    "translate" | "rotate" | "scale"
+  >("translate");
+  const [modifierCollapsed, setModifierCollapsed] = useState(false);
   const [modal, setModal] = useState<string | null>(null),
     [mobilePanel, setMobilePanel] = useState<"settings" | "objects" | null>(
       null,
@@ -259,7 +264,14 @@ function App() {
   const fileInput = useRef<HTMLInputElement>(null),
     presetInput = useRef<HTMLInputElement>(null),
     abortRef = useRef<AbortController | null>(null);
-  const filaments = project.filaments ?? [defaultFilament(project.settings)];
+  const filaments = useMemo(
+    () => project.filaments ?? [defaultFilament(project.settings)],
+    [project.filaments, project.settings],
+  );
+  const filamentColors = useMemo(
+    () => filaments.map((f) => f.color),
+    [filaments],
+  );
   const multiMaterial = project.multiMaterial ?? DEFAULT_MULTI_MATERIAL;
   const viewportPrinter =
     preview && result?.source?.printer
@@ -276,11 +288,41 @@ function App() {
     }
     return [...tools];
   }, [project.models]);
-  const activeModels = project.models.filter(
-      (m) => m.plate === project.activePlate,
+  const activeModels = useMemo(
+      () => project.models.filter((m) => m.plate === project.activePlate),
+      [project.models, project.activePlate],
     ),
     model = activeModels.find((m) => m.id === selected),
     size = model ? dimensions(model) : [0, 0, 0];
+  const viewportModels = useMemo(
+    () =>
+      activeModels.map((m) =>
+        filaments.length > 1
+          ? { ...m, color: filaments[m.tool ?? 0]?.color ?? m.color }
+          : m,
+      ),
+    [activeModels, filaments],
+  );
+  const viewportModifiers = useMemo(
+    () =>
+      modal === "modifiers" && model
+        ? {
+            modelId: model.id,
+            modifiers: modifierDraft,
+            selected: modifierSelected,
+            tool: modifierTool,
+            collapsed: modifierCollapsed,
+          }
+        : undefined,
+    [
+      modal,
+      model,
+      modifierDraft,
+      modifierSelected,
+      modifierTool,
+      modifierCollapsed,
+    ],
+  );
   const notify = (message: string, color = "forest") =>
     notifications.show({ message, color, autoClose: 4500 });
   const commit = useCallback(
@@ -1218,6 +1260,9 @@ function App() {
             disabled={busy}
             onClick={() => {
               setModifierDraft(structuredClone(model.modifiers ?? []));
+              setModifierSelected(model.modifiers?.[0]?.id ?? "");
+              setModifierTool("translate");
+              setModifierCollapsed(false);
               setMobilePanel(null);
               setTool("select");
               setModal("modifiers");
@@ -1503,7 +1548,7 @@ function App() {
       className="app-shell"
       onDragOver={(e) => {
         e.preventDefault();
-        if (!busy) setDragging(true);
+        if (!busy && modal !== "modifiers") setDragging(true);
       }}
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node))
@@ -1512,7 +1557,8 @@ function App() {
       onDrop={(e) => {
         e.preventDefault();
         setDragging(false);
-        if (!busy) void importFiles(e.dataTransfer.files);
+        if (!busy && modal !== "modifiers")
+          void importFiles(e.dataTransfer.files);
       }}
     >
       <input
@@ -1523,7 +1569,7 @@ function App() {
         accept=".stl,.obj,.mtl,.3mf,.webslicer,.gcode,.gco,.g"
         onChange={(e) => e.target.files && void importFiles(e.target.files)}
       />
-      <header className="app-header">
+      <header className="app-header" inert={modal === "modifiers"}>
         <a
           className="brand"
           href="#"
@@ -1663,7 +1709,7 @@ function App() {
           Import model
         </Button>
       </header>
-      <div className="workflow-bar">
+      <div className="workflow-bar" inert={modal === "modifiers"}>
         <div className="workspace-label">
           <span className="status-dot" /> LOCAL WORKSPACE
         </div>
@@ -1704,25 +1750,27 @@ function App() {
         </div>
       </div>
       <div className="workspace-body">
-        <aside className="settings-sidebar">{settingsPanel}</aside>
+        <aside className="settings-sidebar" inert={modal === "modifiers"}>
+          {settingsPanel}
+        </aside>
         <main className="workspace">
           <Viewport
-            models={activeModels.map((m) =>
-              filaments.length > 1
-                ? { ...m, color: filaments[m.tool ?? 0]?.color ?? m.color }
-                : m,
-            )}
+            models={viewportModels}
             printer={viewportPrinter}
             selected={selected}
             onSelect={modal === "modifiers" ? () => {} : setSelected}
-            modifierDraft={
-              modal === "modifiers" && model
-                ? { modelId: model.id, modifiers: modifierDraft }
-                : undefined
+            modifierDraft={viewportModifiers}
+            onModifierSelect={setModifierSelected}
+            onModifierTransform={(id, patch) =>
+              setModifierDraft((items) =>
+                items.map((item) =>
+                  item.id === id ? { ...item, ...patch } : item,
+                ),
+              )
             }
             tool={busy || modal === "modifiers" ? "select" : tool}
             paint={paint}
-            filamentColors={filaments.map((f) => f.color)}
+            filamentColors={filamentColors}
             onPaint={paintModel}
             transformWholeAssembly={transformWholeAssembly}
             onTransform={(id, patch) => updateModel(patch, true, id)}
@@ -1803,6 +1851,7 @@ function App() {
           </div>
           {!preview && (
             <div
+              inert={modal === "modifiers"}
               className="scene-toolbar"
               role="toolbar"
               aria-label="Model tools"
@@ -1888,7 +1937,7 @@ function App() {
               </IconButton>
             </div>
           )}
-          <div className="camera-controls">
+          <div className="camera-controls" inert={modal === "modifiers"}>
             <Tooltip label="Isometric view">
               <button
                 className="view-cube"
@@ -2202,7 +2251,7 @@ function App() {
             </>
           )}
           <div className="scene-bottom">
-            <div className="plate-tabs">
+            <div className="plate-tabs" inert={modal === "modifiers"}>
               {project.plates.map((p) => (
                 <button
                   key={p}
@@ -2250,7 +2299,10 @@ function App() {
               Drag to orbit <i>·</i> Pinch to zoom <i>·</i> Two fingers to pan
             </span>
           </div>
-          <div className="mobile-workspace-buttons">
+          <div
+            className="mobile-workspace-buttons"
+            inert={modal === "modifiers"}
+          >
             <Button
               variant="default"
               leftSection={<Settings2 size={16} />}
@@ -2271,7 +2323,7 @@ function App() {
           </div>
         </main>
       </div>
-      <footer className="action-bar">
+      <footer className="action-bar" inert={modal === "modifiers"}>
         <div className="footer-status">
           <span className="status-dot" />
           <strong>
@@ -2436,6 +2488,19 @@ function App() {
         <ModifierPanel
           model={model}
           value={modifierDraft}
+          selected={modifierSelected}
+          onSelect={setModifierSelected}
+          tool={modifierTool}
+          onTool={setModifierTool}
+          collapsed={modifierCollapsed}
+          onCollapsed={(value) => {
+            setModifierCollapsed(value);
+            view(
+              viewCommand.view.startsWith("modifier-")
+                ? viewCommand.view
+                : "modifier-fit",
+            );
+          }}
           onView={(v) => view(`modifier-${v}`)}
           onChange={setModifierDraft}
           onClose={() => setModal(null)}

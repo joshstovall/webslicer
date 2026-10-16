@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import { useMediaQuery } from "@mantine/hooks";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { Model, ModifierMesh, Printer, SliceResult, Vec3 } from "../types";
 import { FEATURE_COLORS } from "../types";
 import { geometryOf, matrixOf } from "../lib/geometry";
+import {
+  modifierHandlePose,
+  modifierFromHandle,
+} from "../lib/modifier-handles";
 import { bedExclusions } from "../lib/bed-exclusions";
 import { Button, Alert } from "@mantine/core";
 import type { PaintStroke } from "../lib/surface-paint";
@@ -30,11 +35,23 @@ export interface ViewportProps {
   hiddenFeatures: number[];
   colorMode: string;
   wireframe: boolean;
-  modifierDraft?: { modelId: string; modifiers: ModifierMesh[] };
+  modifierDraft?: {
+    modelId: string;
+    modifiers: ModifierMesh[];
+    selected: string;
+    tool: "translate" | "rotate" | "scale";
+    collapsed: boolean;
+  };
+  onModifierSelect?: (id: string) => void;
+  onModifierTransform?: (
+    id: string,
+    patch: Pick<ModifierMesh, "position" | "rotation" | "scale">,
+  ) => void;
   onReady?: () => void;
 }
 export function Viewport(props: ViewportProps) {
   const host = useRef<HTMLDivElement>(null);
+  const compact = useMediaQuery("(max-width: 760px)");
   const latest = useRef(props);
   latest.current = props;
   const [error, setError] = useState("");
@@ -116,8 +133,17 @@ export function Viewport(props: ViewportProps) {
     orbit.addEventListener("change", dirty);
     const dragMatrices = new Map<THREE.Object3D, THREE.Matrix4>();
     let dragInverse = new THREE.Matrix4();
+    let cancellingModifier = false;
+    const cancelModifierDrag = () => {
+      if (!transform.dragging || !transform.object?.userData.modifierVolume)
+        return;
+      cancellingModifier = true;
+      transform.reset();
+      transform.pointerUp(null);
+      cancellingModifier = false;
+    };
     const updateSelection = (mesh: THREE.Object3D) => {
-      selection.box.setFromObject(mesh);
+      selection.box.setFromObject(mesh.userData.modifierVolume ?? mesh);
       if (latest.current.transformWholeAssembly && mesh.userData.assemblyId)
         for (const part of models.children)
           if (part.userData.assemblyId === mesh.userData.assemblyId)
@@ -152,6 +178,17 @@ export function Viewport(props: ViewportProps) {
     transform.addEventListener("objectChange", () => {
       const mesh = transform.object;
       if (!mesh) return;
+      if (mesh.userData.modifierVolume) {
+        const patch = modifierFromHandle(mesh.userData.modifierParent, mesh);
+        mesh.scale.set(...patch.scale);
+        mesh.userData.modifierVolume.matrix.copy(
+          matrixOf(mesh.userData.modifierParent).multiply(matrixOf(patch)),
+        );
+        mesh.userData.modifierVolume.updateMatrixWorld(true);
+        updateSelection(mesh);
+        dirty();
+        return;
+      }
       mesh.updateMatrix();
       const delta = mesh.matrix.clone().multiply(dragInverse);
       for (const [part, original] of dragMatrices) {
@@ -168,6 +205,18 @@ export function Viewport(props: ViewportProps) {
     transform.addEventListener("mouseUp", () => {
       const o = transform.object;
       if (!o) return;
+      if (o.userData.modifierVolume) {
+        if (
+          cancellingModifier ||
+          latest.current.modifierDraft?.modelId !== o.userData.modifierParent.id
+        )
+          return;
+        latest.current.onModifierTransform?.(
+          o.userData.id,
+          modifierFromHandle(o.userData.modifierParent, o),
+        );
+        return;
+      }
       latest.current.onTransform(o.userData.id, {
         position: o.position.toArray() as Vec3,
         rotation: [o.rotation.x, o.rotation.y, o.rotation.z].map(
@@ -274,6 +323,7 @@ export function Viewport(props: ViewportProps) {
       down = { x: e.clientX, y: e.clientY };
       pointers.add(e.pointerId);
       if (pointers.size > 1) {
+        cancelModifierDrag();
         multiTouch = true;
         painting = false;
         return;
@@ -305,6 +355,28 @@ export function Viewport(props: ViewportProps) {
         Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5
       )
         return;
+      if (latest.current.modifierDraft) {
+        const r = renderer.domElement.getBoundingClientRect();
+        raycaster.setFromCamera(
+          new THREE.Vector2(
+            ((e.clientX - r.left) / r.width) * 2 - 1,
+            (-(e.clientY - r.top) / r.height) * 2 + 1,
+          ),
+          camera,
+        );
+        const volumes = scene.getObjectByName("modifier-volumes");
+        const hit =
+          volumes &&
+          raycaster
+            .intersectObjects(volumes.children, false)
+            .find(
+              (hit) =>
+                hit.object.userData.owner ===
+                latest.current.modifierDraft?.modelId,
+            );
+        if (hit) latest.current.onModifierSelect?.(hit.object.userData.id);
+        return;
+      }
       const hit = pick(e);
       latest.current.onSelect(hit ? hit.object.userData.id : null);
     };
@@ -313,6 +385,7 @@ export function Viewport(props: ViewportProps) {
     renderer.domElement.addEventListener("pointermove", pointerMove);
     renderer.domElement.addEventListener("pointercancel", (e) => {
       pointers.delete(e.pointerId);
+      cancelModifierDrag();
       painting = false;
       brushRing.visible = false;
       dirty();
@@ -321,12 +394,24 @@ export function Viewport(props: ViewportProps) {
       brushRing.visible = false;
       dirty();
     });
+    window.addEventListener("blur", cancelModifierDrag);
     const resize = new ResizeObserver(() => {
       const w = node.clientWidth,
         h = node.clientHeight;
       renderer.setSize(w, h);
       camera.aspect = w / h;
-      if (latest.current.tool === "paint" && w < 761)
+      if (latest.current.modifierDraft)
+        camera.setViewOffset(
+          w,
+          h,
+          window.matchMedia("(max-width: 760px)").matches ? 0 : 195,
+          window.matchMedia("(max-width: 760px)").matches
+            ? h * (latest.current.modifierDraft.collapsed ? 0.15 : 0.38)
+            : 0,
+          w,
+          h,
+        );
+      else if (latest.current.tool === "paint" && w < 761)
         camera.setViewOffset(w, h, 0, -h * 0.18, w, h);
       else camera.clearViewOffset();
       camera.updateProjectionMatrix();
@@ -366,6 +451,7 @@ export function Viewport(props: ViewportProps) {
     return () => {
       cancelAnimationFrame(frame);
       resize.disconnect();
+      window.removeEventListener("blur", cancelModifierDrag);
       orbit.dispose();
       transform.dispose();
       scene.traverse((o) => {
@@ -563,6 +649,8 @@ export function Viewport(props: ViewportProps) {
       props.tool !== "paint" &&
       !props.preview
     ) {
+      s.transform.setSpace("world");
+      s.transform.setSize(0.75);
       s.transform.setMode(props.tool);
       s.transform.attach(selected);
     } else s.transform.detach();
@@ -581,8 +669,8 @@ export function Viewport(props: ViewportProps) {
       s.camera.setViewOffset(
         width,
         height,
-        width < 761 ? 0 : 100,
-        width < 761 ? height * 0.38 : 0,
+        compact ? 0 : 195,
+        compact ? height * (props.modifierDraft.collapsed ? 0.15 : 0.38) : 0,
         width,
         height,
       );
@@ -602,6 +690,7 @@ export function Viewport(props: ViewportProps) {
     props.modifierDraft,
     props.paint?.target,
     props.filamentColors,
+    compact,
   ]);
   useEffect(() => {
     const s = state.current;
@@ -610,6 +699,7 @@ export function Viewport(props: ViewportProps) {
     if (!selected) return;
     const group = new THREE.Group();
     group.name = "modifier-volumes";
+    let handle: THREE.Object3D | undefined;
     for (const model of props.models.filter(
       (m) =>
         m.visible &&
@@ -646,6 +736,7 @@ export function Viewport(props: ViewportProps) {
             side: THREE.DoubleSide,
           }),
         );
+        volume.userData = { id: modifier.id, owner: model.id };
         volume.matrixAutoUpdate = false;
         volume.matrix.copy(matrixOf(model).multiply(matrixOf(modifier)));
         const edges = new THREE.LineSegments(
@@ -659,16 +750,58 @@ export function Viewport(props: ViewportProps) {
         );
         volume.add(edges);
         group.add(volume);
+        if (
+          props.modifierDraft?.modelId === model.id &&
+          props.modifierDraft.selected === modifier.id
+        ) {
+          handle = new THREE.Object3D();
+          const pose = modifierHandlePose(model, modifier);
+          handle.position.copy(pose.position);
+          handle.quaternion.copy(pose.quaternion);
+          handle.scale.copy(pose.scale);
+          handle.userData = {
+            id: modifier.id,
+            modifierVolume: volume,
+            modifierParent: model,
+          };
+          s.scene.add(handle);
+          s.transform.setMode(props.modifierDraft.tool);
+          s.transform.setSpace(
+            props.modifierDraft.tool === "translate" ? "world" : "local",
+          );
+          s.transform.setSize(compact ? 1 : 0.85);
+          s.transform.attach(handle);
+          s.selection.box.setFromObject(volume);
+          s.selection.visible = true;
+        }
       }
     }
     s.scene.add(group);
     s.dirty();
     return () => {
+      if (handle) {
+        if (s.transform.object === handle) {
+          // A drawer close or target change can interrupt an active pointer.
+          if (s.transform.dragging) {
+            s.transform.reset();
+            s.transform.dragging = false;
+            s.orbit.enabled = true;
+          }
+          s.transform.detach();
+        }
+        s.scene.remove(handle);
+      }
       s.scene.remove(group);
       clearGroup(group);
       s.dirty();
     };
-  }, [props.models, props.selected, props.modifierDraft, props.preview]);
+  }, [
+    props.models,
+    props.selected,
+    props.modifierDraft,
+    props.preview,
+    compact,
+  ]);
   useEffect(() => {
     const s = state.current;
     if (!s) return;
@@ -759,10 +892,20 @@ export function Viewport(props: ViewportProps) {
       const center = box.getCenter(new THREE.Vector3()),
         distance = Math.max(
           box.getSize(new THREE.Vector3()).length() *
-            (props.viewCommand.view.startsWith("modifier-") &&
-            host.current!.clientWidth < 761
-              ? 8.5
-              : 2.5),
+            (props.viewCommand.view.startsWith("modifier-") && compact
+              ? props.modifierDraft?.collapsed
+                ? 4
+                : 8.5
+              : props.viewCommand.view.startsWith("modifier-")
+                ? Math.max(
+                    2.5,
+                    (host.current!.clientHeight /
+                      (2 *
+                        Math.tan(THREE.MathUtils.degToRad(s.camera.fov / 2)) *
+                        Math.max(120, host.current!.clientWidth - 390))) *
+                      1.15,
+                  )
+                : 2.5),
           45,
         );
       const direction =
@@ -804,7 +947,7 @@ export function Viewport(props: ViewportProps) {
     } else s.camera.position.set(radius * 0.6, -radius * 0.8, radius * 0.65);
     s.orbit.update();
     s.dirty();
-  }, [props.viewCommand]);
+  }, [props.viewCommand, compact]);
   return (
     <div className="viewport-host" ref={host} data-testid="viewport">
       {error && (
