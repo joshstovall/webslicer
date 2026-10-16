@@ -1,3 +1,4 @@
+import { transformModifierMeshes } from "./modifiers";
 import * as THREE from "three";
 import type { Model, Vec3 } from "../types";
 import { boundsOf, matrixOf } from "./geometry";
@@ -55,6 +56,7 @@ export function updateAssembly(
         ...part,
         positions,
         paintTriangles,
+        modifiers: transformModifierMeshes(part.modifiers, local),
         position: [...next.position],
         rotation: [...next.rotation],
         scale: [...next.scale],
@@ -107,6 +109,12 @@ export function assembleModels(models: Model[], name = "Assembly"): Model[] {
       assemblyId,
       positions,
       paintTriangles,
+      modifiers: transformModifierMeshes(
+        m.modifiers,
+        new THREE.Matrix4()
+          .makeTranslation(-offset.x, -offset.y, -offset.z)
+          .multiply(matrix),
+      ),
       position: offset.toArray() as Vec3,
       rotation: [0, 0, 0] as Vec3,
       scale: [1, 1, 1] as Vec3,

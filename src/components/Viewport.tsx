@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import type { Model, Printer, SliceResult, Vec3 } from "../types";
+import type { Model, ModifierMesh, Printer, SliceResult, Vec3 } from "../types";
 import { FEATURE_COLORS } from "../types";
-import { geometryOf } from "../lib/geometry";
+import { geometryOf, matrixOf } from "../lib/geometry";
 import { bedExclusions } from "../lib/bed-exclusions";
 import { Button, Alert } from "@mantine/core";
 import type { PaintStroke } from "../lib/surface-paint";
@@ -30,6 +30,7 @@ export interface ViewportProps {
   hiddenFeatures: number[];
   colorMode: string;
   wireframe: boolean;
+  modifierDraft?: { modelId: string; modifiers: ModifierMesh[] };
   onReady?: () => void;
 }
 export function Viewport(props: ViewportProps) {
@@ -554,7 +555,16 @@ export function Viewport(props: ViewportProps) {
       props.tool === "paint" ? "crosshair" : "";
     const width = host.current!.clientWidth,
       height = host.current!.clientHeight;
-    if (props.tool === "paint" && width < 761)
+    if (props.modifierDraft)
+      s.camera.setViewOffset(
+        width,
+        height,
+        width < 761 ? 0 : 100,
+        width < 761 ? height * 0.38 : 0,
+        width,
+        height,
+      );
+    else if (props.tool === "paint" && width < 761)
       s.camera.setViewOffset(width, height, 0, -height * 0.18, width, height);
     else s.camera.clearViewOffset();
     if (props.tool !== "paint")
@@ -567,7 +577,62 @@ export function Viewport(props: ViewportProps) {
     props.preview,
     props.wireframe,
     props.transformWholeAssembly,
+    props.modifierDraft,
   ]);
+  useEffect(() => {
+    const s = state.current;
+    if (!s || props.preview) return;
+    const selected = props.models.find((m) => m.id === props.selected);
+    if (!selected) return;
+    const group = new THREE.Group();
+    group.name = "modifier-volumes";
+    for (const model of props.models.filter(
+      (m) =>
+        m.visible &&
+        (m.id === selected.id ||
+          (selected.assemblyId && m.assemblyId === selected.assemblyId)),
+    )) {
+      const modifiers =
+        props.modifierDraft?.modelId === model.id
+          ? props.modifierDraft.modifiers
+          : model.modifiers;
+      for (const modifier of modifiers ?? []) {
+        if (!modifier.enabled) continue;
+        const geometry = geometryOf(modifier.positions, false);
+        const volume = new THREE.Mesh(
+          geometry,
+          new THREE.MeshBasicMaterial({
+            color: 0xd48b20,
+            transparent: true,
+            opacity: 0.15,
+            depthWrite: false,
+            depthTest: false,
+            side: THREE.DoubleSide,
+          }),
+        );
+        volume.matrixAutoUpdate = false;
+        volume.matrix.copy(matrixOf(model).multiply(matrixOf(modifier)));
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geometry),
+          new THREE.LineBasicMaterial({
+            color: 0xc58320,
+            transparent: true,
+            opacity: 0.85,
+            depthTest: false,
+          }),
+        );
+        volume.add(edges);
+        group.add(volume);
+      }
+    }
+    s.scene.add(group);
+    s.dirty();
+    return () => {
+      s.scene.remove(group);
+      clearGroup(group);
+      s.dirty();
+    };
+  }, [props.models, props.selected, props.modifierDraft, props.preview]);
   useEffect(() => {
     const s = state.current;
     if (!s) return;
@@ -643,16 +708,25 @@ export function Viewport(props: ViewportProps) {
     const s = state.current;
     if (!s) return;
     const radius = Math.max(...props.printer.bed) * 1.8;
-    const paintView = props.viewCommand.view.startsWith("paint-");
-    const v = props.viewCommand.view.replace(/^paint-/, "");
+    const paintView = /^(paint|modifier)-/.test(props.viewCommand.view);
+    const v = props.viewCommand.view.replace(/^(paint|modifier)-/, "");
     if (paintView) {
       const selected = s.models.children.find(
         (m) => m.userData.id === props.selected,
       );
       const box = new THREE.Box3().setFromObject(selected ?? s.models);
+      if (props.viewCommand.view.startsWith("modifier-")) {
+        const volumes = s.scene.getObjectByName("modifier-volumes");
+        if (volumes?.children.length)
+          box.union(new THREE.Box3().setFromObject(volumes));
+      }
       const center = box.getCenter(new THREE.Vector3()),
         distance = Math.max(
-          box.getSize(new THREE.Vector3()).length() * 2.5,
+          box.getSize(new THREE.Vector3()).length() *
+            (props.viewCommand.view.startsWith("modifier-") &&
+            host.current!.clientWidth < 761
+              ? 8.5
+              : 2.5),
           45,
         );
       const direction =

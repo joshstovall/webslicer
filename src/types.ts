@@ -1,4 +1,16 @@
 export type Vec3 = [number, number, number];
+export interface ModifierMesh {
+  id: string;
+  name: string;
+  positions: Float32Array;
+  /** Transform relative to the owning model. */
+  position: Vec3;
+  rotation: Vec3;
+  scale: Vec3;
+  enabled: boolean;
+  infill: number;
+  infillPattern: string;
+}
 export interface Model {
   id: string;
   name: string;
@@ -19,6 +31,8 @@ export interface Model {
   paintTriangles?: Float32Array;
   /** Inward paint depth in world millimeters. */
   paintDepth?: number;
+  /** Ordered modifier volumes; later entries take priority. */
+  modifiers?: ModifierMesh[];
 }
 export interface Filament {
   name: string;

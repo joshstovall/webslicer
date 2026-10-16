@@ -46,7 +46,7 @@ export function createModel(
     plate,
   };
 }
-export function matrixOf(m: Model) {
+export function matrixOf(m: Pick<Model, "position" | "rotation" | "scale">) {
   return new THREE.Matrix4().compose(
     new THREE.Vector3(...m.position),
     new THREE.Quaternion().setFromEuler(

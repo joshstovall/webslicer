@@ -5,23 +5,29 @@ import {
   editMaterialRegions,
   type MaterialEdit,
 } from "./edit-material-regions";
+import { validateModifierVolumes } from "./validate-modifier-volumes";
+import type { WorldModifier } from "./modifiers";
 self.onmessage = async (
   event: MessageEvent<
-    MaterialPart[] | { parts: MaterialPart[]; operation: MaterialEdit }
+    | MaterialPart[]
+    | {
+        parts: MaterialPart[];
+        operation?: MaterialEdit;
+        modifiers?: WorldModifier[];
+      }
   >,
 ) => {
   try {
     const api = await Module({ locateFile: () => wasmUrl });
     api.setup();
     const progress = (value: number) => self.postMessage({ progress: value });
-    const parts = Array.isArray(event.data)
-      ? prepareMaterialRegions(api, event.data, progress)
-      : editMaterialRegions(
-          api,
-          event.data.parts,
-          event.data.operation,
-          progress,
-        );
+    const payload = Array.isArray(event.data)
+      ? { parts: event.data }
+      : event.data;
+    validateModifierVolumes(api, payload.modifiers ?? []);
+    const parts = payload.operation
+      ? editMaterialRegions(api, payload.parts, payload.operation, progress)
+      : prepareMaterialRegions(api, payload.parts, progress);
     self.postMessage(
       { parts },
       { transfer: parts.map((p) => p.vertices.buffer as ArrayBuffer) },

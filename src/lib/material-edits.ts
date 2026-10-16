@@ -1,3 +1,6 @@
+import { transformModifierMeshes, validateModifiers } from "./modifiers";
+import { matrixOf } from "./geometry";
+import { newId } from "./id";
 import type { Model } from "../types";
 import {
   assemblyParts,
@@ -61,6 +64,27 @@ export function modelsFromMaterialEdit(
         };
       });
       group = assembleModels(group);
+      for (const visible of [true, false]) {
+        const owner = group.findIndex((m) => m.visible === visible);
+        if (owner < 0) continue;
+        const inverse = matrixOf(group[owner]).invert();
+        const modifiers = sources
+          .filter((s) => s.visible === visible)
+          .flatMap(
+            (s) =>
+              transformModifierMeshes(
+                s.modifiers,
+                inverse.clone().multiply(matrixOf(s)),
+              ) ?? [],
+          );
+        if (modifiers.length)
+          group[owner] = {
+            ...group[owner],
+            modifiers: validateModifiers(
+              modifiers.map((m) => ({ ...m, id: newId() })),
+            ),
+          };
+      }
       if (operation.kind === "height" && sources[0].assemblyId)
         group = group.map((m) => ({ ...m, assemblyId: sources[0].assemblyId }));
       if (operation.kind === "cut") {
@@ -100,7 +124,9 @@ export async function editModelSelection(
   if (!selected) throw new Error("Select a model to edit.");
   const sources = whole ? assemblyParts(models, selected) : [selected];
   let replacements: Model[];
-  const simple = sources.every((m) => !m.faceTools && m.visible);
+  const simple = sources.every(
+    (m) => !m.faceTools && !m.modifiers?.length && m.visible,
+  );
   if (operation.kind === "height" && simple) {
     const result = colorAboveHeight(
       models,

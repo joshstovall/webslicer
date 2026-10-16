@@ -7,6 +7,7 @@ import {
   type PreparedPart,
 } from "./material-regions";
 import type { MaterialEdit, EditedPart } from "./edit-material-regions";
+import { worldModifiers, type WorldModifier } from "./modifiers";
 export function worldMaterialParts(
   models: Model[],
   defaultDepth = 0.8,
@@ -28,6 +29,7 @@ export function worldMaterialParts(
       }
       return {
         name: m.name,
+        sourceIds: [m.id],
         visible: m.visible,
         assemblyId: m.assemblyId,
         tool: m.tool ?? 0,
@@ -47,8 +49,9 @@ export async function prepareMaterials(
   if (signal.aborted)
     throw new DOMException("Slicing cancelled.", "AbortError");
   const parts = worldMaterialParts(models, depth);
-  if (!needsMaterialPreparation(parts)) return parts;
-  return runMaterialWorker(parts, signal, onProgress);
+  const modifiers = models.filter((m) => m.visible).flatMap(worldModifiers);
+  if (!modifiers.length && !needsMaterialPreparation(parts)) return parts;
+  return runMaterialWorker(parts, signal, onProgress, undefined, modifiers);
 }
 export async function editMaterials(
   models: Model[],
@@ -69,6 +72,7 @@ async function runMaterialWorker(
   signal: AbortSignal,
   onProgress: (value: number, stage: string) => void,
   operation?: MaterialEdit,
+  modifiers?: WorldModifier[],
 ): Promise<PreparedPart[]> {
   onProgress(0, "Preparing material regions");
   if (signal.aborted)
@@ -114,7 +118,7 @@ async function runMaterialWorker(
         );
     };
     worker.postMessage(
-      operation ? { parts, operation } : parts,
+      operation || modifiers?.length ? { parts, operation, modifiers } : parts,
       parts.flatMap((p) => [
         p.vertices.buffer,
         ...(p.paintVertices ? [p.paintVertices.buffer] : []),

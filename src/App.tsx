@@ -1,3 +1,5 @@
+import { ModifierPanel } from "./components/ModifierPanel";
+import type { ModifierMesh } from "./types";
 import { validManualLayerSettings } from "./lib/layer-height";
 import { applyPrinter, VENDOR_NOZZLES } from "./lib/nozzle-profiles";
 import { PrinterHardware } from "./components/PrinterHardware";
@@ -203,6 +205,7 @@ function App() {
     [progress, setProgress] = useState(0),
     [stage, setStage] = useState(""),
     [playing, setPlaying] = useState(false);
+  const [modifierDraft, setModifierDraft] = useState<ModifierMesh[]>([]);
   const [modal, setModal] = useState<string | null>(null),
     [mobilePanel, setMobilePanel] = useState<"settings" | "objects" | null>(
       null,
@@ -1186,6 +1189,23 @@ function App() {
           >
             Manage assembly
           </Button>
+          <Button
+            fullWidth
+            size="xs"
+            variant="light"
+            mb="sm"
+            disabled={busy}
+            onClick={() => {
+              setModifierDraft(structuredClone(model.modifiers ?? []));
+              setMobilePanel(null);
+              setTool("select");
+              setModal("modifiers");
+              view("modifier-fit");
+            }}
+          >
+            Infill modifiers
+            {model.modifiers?.length ? ` (${model.modifiers.length})` : ""}
+          </Button>
           <TextInput
             aria-label="Object name"
             value={model.name}
@@ -1666,8 +1686,13 @@ function App() {
             )}
             printer={viewportPrinter}
             selected={selected}
-            onSelect={setSelected}
-            tool={busy ? "select" : tool}
+            onSelect={modal === "modifiers" ? () => {} : setSelected}
+            modifierDraft={
+              modal === "modifiers" && model
+                ? { modelId: model.id, modifiers: modifierDraft }
+                : undefined
+            }
+            tool={busy || modal === "modifiers" ? "select" : tool}
             paint={paint}
             filamentColors={filaments.map((f) => f.color)}
             onPaint={paintModel}
@@ -2363,6 +2388,19 @@ function App() {
           Done
         </Button>
       </Modal>
+      {modal === "modifiers" && model && (
+        <ModifierPanel
+          model={model}
+          value={modifierDraft}
+          onView={(v) => view(`modifier-${v}`)}
+          onChange={setModifierDraft}
+          onClose={() => setModal(null)}
+          onSave={() => {
+            updateModel({ modifiers: modifierDraft });
+            setModal(null);
+          }}
+        />
+      )}
       <Modal
         opened={modal === "assembly"}
         onClose={() => setModal(null)}

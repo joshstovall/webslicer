@@ -1,3 +1,4 @@
+import { validateModifiers } from "./modifiers";
 import { validManualLayerSettings } from "./layer-height";
 import {
   validMaterialRequirements,
@@ -43,6 +44,10 @@ export function saveProject(p: Project) {
     models: p.models.map((m) => ({
       ...m,
       positions: Array.from(m.positions),
+      modifiers: m.modifiers?.map((v) => ({
+        ...v,
+        positions: Array.from(v.positions),
+      })),
       faceTools: m.faceTools ? Array.from(m.faceTools) : undefined,
       paintTriangles: m.paintTriangles
         ? Array.from(m.paintTriangles)
@@ -99,6 +104,7 @@ export function validateProject(p: unknown): Project {
       id: String(m.id),
       name: String(m.name),
       positions: a,
+      modifiers: validateModifiers(m.modifiers),
       tool: m.tool ?? 0,
       assemblyId:
         typeof m.assemblyId === "string" && m.assemblyId.length <= 128

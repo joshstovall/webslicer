@@ -2,6 +2,7 @@ import type { Manifold, ManifoldToplevel } from "manifold-3d";
 
 export interface MaterialPart {
   name: string;
+  sourceIds?: string[];
   visible?: boolean;
   assemblyId?: string;
   tool: number;
@@ -12,6 +13,7 @@ export interface MaterialPart {
 }
 export interface PreparedPart {
   name: string;
+  sourceIds?: string[];
   visible?: boolean;
   assemblyId?: string;
   tool: number;
@@ -188,9 +190,11 @@ export function prepareMaterialRegions(
         !group.some((p) => p.faceTools?.some((t) => t !== p.tool))
       ) {
         for (const source of group) {
-          const { name, visible, assemblyId, tool, vertices } = source;
+          const { name, sourceIds, visible, assemblyId, tool, vertices } =
+            source;
           const part = {
             name,
+            sourceIds,
             visible,
             assemblyId,
             tool,
@@ -203,6 +207,7 @@ export function prepareMaterialRegions(
         progress(done / parts.length);
         continue;
       }
+      const sourceIds = group.flatMap((p) => p.sourceIds ?? []);
       const assemblyId = group[0].assemblyId ?? `paint-${key}`;
       let occupied: Manifold | undefined;
       const byTool = new Map<number, Manifold[]>();
@@ -235,6 +240,7 @@ export function prepareMaterialRegions(
           else {
             const prepared = {
               name: part.name,
+              sourceIds,
               visible: part.visible,
               assemblyId,
               tool: region.tool,
@@ -253,6 +259,7 @@ export function prepareMaterialRegions(
         if (!merged.isEmpty()) {
           const prepared = {
             name: `${group[0].name} · filament ${tool + 1}`,
+            sourceIds,
             assemblyId,
             tool,
             vertices: toVertices(merged),

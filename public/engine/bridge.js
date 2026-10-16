@@ -81,6 +81,10 @@ window.addEventListener("message", async (e) => {
       widget.track.grid_id = index;
       widget.meta.file = part.name;
       widget.anno.extruder = part.tool;
+      widget.anno.stratumModifiers = part.modifiers?.map((m) => ({
+        ...m,
+        vertices: Array.from(m.vertices),
+      }));
       widget.setTopZ(widget.getBoundingBox().max.z);
       engine.settings.widget[widget.id] = { extruder: part.tool };
       return widget;

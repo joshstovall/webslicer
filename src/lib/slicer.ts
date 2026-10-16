@@ -1,3 +1,4 @@
+import { attachModifiers, modifierErrors } from "./modifiers";
 import { materialCompatibility } from "./material-compatibility";
 import { createU1Job } from "./u1-job";
 import { printThumbnails } from "./print-package";
@@ -33,16 +34,20 @@ export async function slicePlate(
   filaments: Filament[] = [defaultFilament(settings)],
   multi: MultiMaterialSettings = DEFAULT_MULTI_MATERIAL,
 ): Promise<SliceResult> {
-  const errors = materialErrors(models, printer, filaments, settings, multi);
+  const errors = [
+    ...materialErrors(models, printer, filaments, settings, multi),
+    ...modifierErrors(models, settings),
+  ];
   if (new Set(models.map((m) => m.plate)).size > 1)
     errors.push("Slice one build plate at a time.");
   if (errors.length) return Promise.reject(new Error(errors.join("\n")));
-  const parts = await prepareMaterials(
+  const prepared = await prepareMaterials(
     models,
     Math.max(settings.lineWidth * 2, settings.layerHeight * 3),
     signal,
     onProgress,
   );
+  const parts = attachModifiers(models, prepared);
   if (!parts.length) throw new Error("No printable material regions remain.");
   return new Promise((resolve, reject) => {
     const iframe = document.createElement("iframe");
