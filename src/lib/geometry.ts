@@ -1,7 +1,7 @@
 import { newId } from "./id";
 import * as THREE from "three";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
-import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import { importObj } from "./import-obj";
 import { STLExporter } from "three/addons/exporters/STLExporter.js";
 import { import3mf, type ModelImport } from "./import-3mf";
 import type { Model, Vec3, Printer } from "../types";
@@ -205,6 +205,7 @@ export async function importModels(
 export async function importModelFile(
   file: File,
   plate: number,
+  companions: File[] = [],
 ): Promise<ModelImport> {
   if (file.size > 100 * 1024 * 1024)
     throw new Error("Please use a model smaller than 100 MB.");
@@ -219,71 +220,7 @@ export async function importModelFile(
     return { models: [createModel(stem, g, plate)], palette: [], warnings: [] };
   }
   if (ext !== "obj") throw new Error("Supported models are STL, OBJ, and 3MF.");
-  const object = new OBJLoader().parse(await file.text());
-  object.updateMatrixWorld(true);
-  const parts: {
-    name: string;
-    geometry: THREE.BufferGeometry;
-    color?: string;
-    material: string;
-  }[] = [];
-  object.traverse((o) => {
-    if (!(o instanceof THREE.Mesh)) return;
-    const geometry = o.geometry.clone().applyMatrix4(o.matrixWorld);
-    const material = Array.isArray(o.material) ? o.material[0] : o.material;
-    parts.push({
-      name: o.name || stem,
-      geometry,
-      color: material.color?.getHexString
-        ? `#${material.color.getHexString()}`
-        : undefined,
-      material: material.name || "Default",
-    });
-  });
-  if (!parts.length)
-    throw new Error("No printable mesh was found in this OBJ.");
-  const bounds = new THREE.Box3();
-  parts.forEach((p) => {
-    p.geometry.computeBoundingBox();
-    bounds.union(p.geometry.boundingBox!);
-  });
-  const center = bounds.getCenter(new THREE.Vector3()),
-    assemblyId = parts.length > 1 ? newId() : undefined;
-  const palette: ModelImport["palette"] = [];
-  const keys: string[] = [];
-  const models = parts.map((part) => {
-    part.geometry.translate(-center.x, -center.y, -bounds.min.z);
-    const positions = rawGeometry(part.geometry);
-    part.geometry.dispose();
-    if (!positions.length || positions.some((n) => !Number.isFinite(n)))
-      throw new Error("OBJ contains empty or invalid geometry.");
-    let tool = keys.indexOf(part.material);
-    if (tool < 0) {
-      tool = keys.length;
-      keys.push(part.material);
-      palette.push({
-        name: part.material,
-        color:
-          part.color === "#ffffff"
-            ? COLORS[tool % COLORS.length]
-            : (part.color ?? COLORS[tool % COLORS.length]),
-      });
-    }
-    return {
-      id: newId(),
-      name: part.name,
-      positions,
-      position: [0, 0, 0] as Vec3,
-      rotation: [0, 0, 0] as Vec3,
-      scale: [1, 1, 1] as Vec3,
-      color: palette[tool].color,
-      tool,
-      assemblyId,
-      plate,
-      visible: true,
-    };
-  });
-  return { models, palette, warnings: [] };
+  return importObj(file, plate, companions);
 }
 
 export function exportSTL(models: Model[]): ArrayBuffer {

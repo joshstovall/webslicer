@@ -462,7 +462,21 @@ function App() {
     setLoadingPackage(false);
     setImporting(true);
     try {
-      for (const file of Array.from(files)) {
+      const selectedFiles = Array.from(files);
+      const materials = selectedFiles.filter((file) =>
+        /\.mtl$/i.test(file.name),
+      );
+      if (
+        materials.length &&
+        !selectedFiles.some((file) => /\.obj$/i.test(file.name))
+      )
+        notify(
+          "Select the OBJ and its companion MTL files together to import material colors.",
+          "orange",
+        );
+      for (const file of selectedFiles.filter(
+        (file) => !/\.mtl$/i.test(file.name),
+      )) {
         if (/\.webslicer$/i.test(file.name)) {
           const p = await readProject(file);
           commit(p);
@@ -506,7 +520,7 @@ function App() {
           continue;
         }
         const targetPlate = projectRef.current.activePlate;
-        const imported = await importModelFile(file, targetPlate);
+        const imported = await importModelFile(file, targetPlate, materials);
         const p = projectRef.current;
         const { models: added, filaments: importedFilaments } =
           bindImportedMaterials(p, imported);
@@ -1083,7 +1097,7 @@ function App() {
         onClick={() => fileInput.current?.click()}
         disabled={busy || importing}
       >
-        <Plus size={14} /> Add model <span>STL · OBJ · 3MF</span>
+        <Plus size={14} /> Add model <span>STL · OBJ + MTL · 3MF</span>
       </button>
       {model && (
         <div className="object-inspector">
@@ -1415,7 +1429,7 @@ function App() {
         type="file"
         multiple
         hidden
-        accept=".stl,.obj,.3mf,.webslicer,.gcode,.gco,.g"
+        accept=".stl,.obj,.mtl,.3mf,.webslicer,.gcode,.gco,.g"
         onChange={(e) => e.target.files && void importFiles(e.target.files)}
       />
       <header className="app-header">
