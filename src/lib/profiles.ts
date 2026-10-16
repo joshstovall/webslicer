@@ -1,4 +1,10 @@
-import type { Printer, Settings } from "../types";
+import type {
+  Printer,
+  Settings,
+  Filament,
+  MultiMaterialSettings,
+} from "../types";
+import { VENDOR_PRINTERS } from "./vendor-printers";
 const startGcode = `; Stratum / generic Marlin-compatible start\nG90\nM82\nM140 S{bed_temp}\nM104 S{temp}\nG28\nM190 S{bed_temp}\nM109 S{temp}\nG92 E0`;
 const endGcode = `M400\nG92 E0\nG1 E-1 F1800\nM104 S0\nM140 S0\nM107\nM84`;
 export const PRINTERS: Printer[] = [
@@ -30,6 +36,18 @@ export const PRINTERS: Printer[] = [
     endGcode,
   },
   {
+    id: "generic-multi",
+    name: "Custom multi-extruder FDM",
+    bed: [256, 256, 256],
+    nozzle: 0.4,
+    filament: 1.75,
+    startGcode,
+    endGcode,
+    toolCount: 4,
+    multiMaterialMode: "toolchanger",
+    toolChangeGcode: "T{tool}",
+  },
+  {
     id: "generic",
     name: "Custom FDM printer",
     bed: [256, 256, 256],
@@ -38,6 +56,7 @@ export const PRINTERS: Printer[] = [
     startGcode,
     endGcode,
   },
+  ...VENDOR_PRINTERS,
 ];
 export const MATERIALS = [
   {
@@ -137,9 +156,13 @@ export const QUALITY = [
   { name: "Balanced", value: 0.2 },
   { name: "Draft", value: 0.28 },
 ];
-export function processProfile(s: Settings) {
+export function processProfile(s: Settings, multi?: MultiMaterialSettings) {
   return {
     processName: "Stratum",
+    outputPurgeTower: multi?.purgeTower
+      ? multi.purgeVolume / Math.min(s.layerHeight, s.firstLayerHeight)
+      : 0,
+    sliceSupportNozzle: multi?.supportTool ?? 0,
     sliceHeight: s.layerHeight,
     firstSliceHeight: s.firstLayerHeight,
     sliceLineWidth: s.lineWidth,
@@ -190,7 +213,8 @@ export function processProfile(s: Settings) {
     fdmArcEnabled: false,
   };
 }
-export function deviceProfile(p: Printer) {
+export function deviceProfile(p: Printer, filaments?: Filament[]) {
+  const multi = (filaments?.length ?? 1) > 1 || Boolean(p.firmware);
   return {
     deviceName: p.name,
     mode: "FDM",
@@ -198,24 +222,45 @@ export function deviceProfile(p: Printer) {
     bedDepth: p.bed[1],
     maxHeight: p.bed[2],
     originCenter: false,
-    extrudeAbs: true,
+    extrudeAbs: !multi,
     gcodeFExt: "gcode",
     gcodeSpace: true,
     gcodeStrip: false,
-    gcodePre: p.startGcode.split("\n"),
-    gcodePost: p.endGcode.split("\n"),
+    gcodePre: [
+      ...(p.firmware ? [] : ["T{tool}", ...p.startGcode.split("\n")]),
+      ";STRATUM_INITIAL_TOOL:{tool}",
+      "T{tool}",
+      multi ? "M83" : "M82",
+      ";STRATUM_PRINT_BEGIN",
+    ],
+    gcodeChange: [
+      ";STRATUM_TOOL_CHANGE:{last_tool}:{tool}",
+      ...(p.firmware
+        ? ["T{tool}"]
+        : (p.toolChangeGcode ?? "T{tool}").split("\n")),
+      ";STRATUM_TOOL_READY",
+    ],
+    gcodePost: [
+      ";STRATUM_PRINT_END",
+      ...(p.firmware
+        ? []
+        : [
+            ...(multi && p.multiMaterialMode === "toolchanger"
+              ? (filaments ?? []).map((_, i) => `M104 T${i} S0`)
+              : []),
+            ...p.endGcode.split("\n"),
+          ]),
+    ],
     gcodeFan: ["M106 S{fan_speed}"],
     gcodeLayer: [";LAYER:{layer}", ";Z:{z}"],
     gcodeFeature: [";TYPE:{feature}"],
-    extruders: [
-      {
-        extFilament: p.filament,
-        extNozzle: p.nozzle,
-        extOffsetX: 0,
-        extOffsetY: 0,
-        extSelect: ["T0"],
-        extDeselect: [],
-      },
-    ],
+    extruders: Array.from({ length: filaments?.length ?? 1 }, (_, tool) => ({
+      extFilament: p.filament,
+      extNozzle: p.nozzle,
+      extOffsetX: p.bedOrigin?.[0] ?? 0,
+      extOffsetY: p.bedOrigin?.[1] ?? 0,
+      extSelect: [`T${tool}`],
+      extDeselect: [],
+    })),
   };
 }

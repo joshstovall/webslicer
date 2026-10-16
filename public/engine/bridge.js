@@ -1,5 +1,5 @@
 // The engine lives in an isolated frame; removing it cancels all owned workers.
-let Engine;
+let Engine, engineClient;
 let running = false;
 const send = (message) =>
   parent.postMessage({ stratumEngine: true, ...message }, location.origin);
@@ -19,9 +19,11 @@ window.addEventListener("message", async (e) => {
     return;
   running = true;
   try {
-    const { vertices, device, process } = e.data;
+    const { parts, device, process } = e.data;
     self.createWorker = () => {
-      const worker = new Worker(new URL("./kiri-work.js", import.meta.url), { type: "module" });
+      const worker = new Worker(new URL("./kiri-work.js", import.meta.url), {
+        type: "module",
+      });
       worker.addEventListener("error", (e) =>
         send({
           type: "error",
@@ -59,11 +61,45 @@ window.addEventListener("message", async (e) => {
           stage: "Planning toolpaths",
         });
     });
-    // Vertices already carry all scene transforms in millimetres, Z-up.
-    engine.widget.loadVertices(vertices);
-    engine.widget.track.grid_id = 0;
-    engine.setTopOffset(0);
-    await engine.slice();
+    // Preserve each part's tool assignment in a shared coordinate system.
+    const widgets = parts.map((part, index) => {
+      const widget =
+        index === 0 ? engine.widget : new engine.widget.constructor();
+      widget.loadVertices(part.vertices);
+      widget.track.grid_id = index;
+      widget.meta.file = part.name;
+      widget.anno.extruder = part.tool;
+      widget.setTopZ(widget.getBoundingBox().max.z);
+      engine.settings.widget[widget.id] = { extruder: part.tool };
+      return widget;
+    });
+    engineClient.clear();
+    engineClient.sync(widgets);
+    await new Promise((resolve) =>
+      engineClient.rotate(engine.settings, resolve),
+    );
+    await new Promise((resolve) =>
+      engineClient.slicePre(engine.settings, resolve),
+    );
+    // Sequential dispatch keeps peak memory bounded on phones. The engine's
+    // worker pool still parallelizes expensive polygon operations internally.
+    for (const [index, widget] of widgets.entries()) {
+      await new Promise((resolve, reject) => {
+        engineClient.slice(engine.settings, widget, (msg) => {
+          if (msg.error) reject(new Error(msg.error));
+          if (msg.update !== undefined)
+            send({
+              type: "progress",
+              progress: (0.8 * (index + msg.update)) / widgets.length,
+              stage: `Slicing part ${index + 1} of ${widgets.length}`,
+            });
+          if (msg.done) resolve();
+        });
+      });
+    }
+    await new Promise((resolve) =>
+      engineClient.slicePost(engine.settings, resolve),
+    );
     send({ type: "progress", progress: 0.8, stage: "Planning toolpaths" });
     await engine.prepare();
     send({ type: "progress", progress: 0.96, stage: "Generating G-code" });
@@ -78,7 +114,7 @@ window.addEventListener("message", async (e) => {
   }
 });
 try {
-  ({ Engine } = await import("./kiri-eng.js"));
+  ({ Engine, engineClient } = await import("./kiri-eng.js"));
   send({ type: "ready" });
 } catch (error) {
   send({

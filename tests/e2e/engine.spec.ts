@@ -168,3 +168,51 @@ test("STL, OBJ and 3MF import actual meshes into the workspace", async ({
     "25.4 × 25.4 × 25.4",
   );
 });
+
+test("multi-extruder engine retains non-contiguous tools and produces a purge tower", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const result = await page.evaluate(async () => {
+    const { primitive } = await import("/src/lib/geometry.ts");
+    const { slicePlate } = await import("/src/lib/slicer.ts");
+    const { PRINTERS, DEFAULT_SETTINGS } = await import("/src/lib/profiles.ts");
+    const { defaultFilament, DEFAULT_MULTI_MATERIAL } =
+      await import("/src/lib/multimaterial.ts");
+    const a = primitive("cube", 1),
+      b = primitive("cube", 1);
+    a.scale = b.scale = [0.4, 0.4, 0.1];
+    a.position = [-10, 0, 0];
+    b.position = [10, 0, 0];
+    a.tool = 0;
+    b.tool = 2;
+    const settings = { ...DEFAULT_SETTINGS, adhesion: "none" };
+    const result = await slicePlate(
+      [a, b],
+      { ...PRINTERS[0], toolCount: 4, multiMaterialMode: "toolchanger" },
+      settings,
+      () => {},
+      new AbortController().signal,
+      [0, 1, 2].map((i) => defaultFilament(settings, i)),
+      { ...DEFAULT_MULTI_MATERIAL, purgeVolume: 30 },
+    );
+    return {
+      tools: result.tools,
+      toolChanges: result.toolChanges,
+      layers: result.layers.map((l) => ({
+        tools: [...new Set(l.tools)],
+        features: [...new Set(l.features)],
+      })),
+      gcode: result.gcode,
+    };
+  });
+  expect(result.tools.map((t) => t.tool)).toEqual([0, 2]);
+  expect(result.toolChanges).toBeGreaterThan(5);
+  expect(result.layers.length).toBeGreaterThan(5);
+  expect(
+    result.layers.some((l) => l.tools.includes(0) && l.tools.includes(2)),
+  ).toBe(true);
+  expect(result.layers.some((l) => l.features.includes(5))).toBe(true);
+  expect(result.gcode).toContain("T2");
+  expect(result.gcode).not.toMatch(/NaN|undefined|Infinity/);
+});

@@ -366,9 +366,10 @@ export function Viewport(props: ViewportProps) {
           positions.push(
             layer.segments[a + k] -
               (k % 3 === 0
-                ? props.printer.bed[0] / 2
+                ? props.printer.bed[0] / 2 + (props.printer.bedOrigin?.[0] ?? 0)
                 : k % 3 === 1
-                  ? props.printer.bed[1] / 2
+                  ? props.printer.bed[1] / 2 +
+                    (props.printer.bedOrigin?.[1] ?? 0)
                   : 0),
           );
         if (props.colorMode === "speed")
@@ -376,6 +377,11 @@ export function Viewport(props: ViewportProps) {
             0.65 - Math.min(layer.speeds[i] / 150, 1) * 0.65,
             0.65,
             0.55,
+          );
+        else if (props.colorMode === "filament" && feature !== 4)
+          c.set(
+            props.result.tools.find((t) => t.tool === layer.tools[i])?.color ??
+              "#91ad87",
           );
         else c.set(FEATURE_COLORS[feature]);
         if (!props.singleLayer && l !== end) c.multiplyScalar(0.9);

@@ -9,6 +9,25 @@ export interface Model {
   color: string;
   visible: boolean;
   plate: number;
+  /** Zero-based filament slot; independent of the display color. */
+  tool?: number;
+}
+export interface Filament {
+  name: string;
+  color: string;
+  material: string;
+  nozzleTemp: number;
+  firstNozzleTemp: number;
+  density: number;
+  cost: number;
+  flow: number;
+  maxFlow: number;
+  fan: number;
+}
+export interface MultiMaterialSettings {
+  purgeTower: boolean;
+  purgeVolume: number;
+  supportTool: number;
 }
 export interface Printer {
   id: string;
@@ -18,6 +37,14 @@ export interface Printer {
   filament: number;
   startGcode: string;
   endGcode: string;
+  toolCount?: number;
+  multiMaterialMode?: "single" | "shared-nozzle" | "toolchanger";
+  toolChangeGcode?: string;
+  profileSource?: string;
+  firmware?: "bambu" | "snapmaker-u1";
+  profileRevision?: string;
+  bedOrigin?: [number, number];
+  bedType?: string;
 }
 export interface Settings {
   layerHeight: number;
@@ -73,6 +100,8 @@ export interface Project {
   settings: Settings;
   plates: number[];
   activePlate: number;
+  filaments?: Filament[];
+  multiMaterial?: MultiMaterialSettings;
 }
 export type Feature = "wall" | "infill" | "solid" | "support" | "travel";
 export interface ToolpathLayer {
@@ -80,6 +109,7 @@ export interface ToolpathLayer {
   segments: Float32Array;
   features: Uint8Array;
   speeds: Float32Array;
+  tools: Uint8Array;
 }
 export interface SliceResult {
   gcode: string;
@@ -89,6 +119,15 @@ export interface SliceResult {
   weight: number;
   cost: number;
   warnings: string[];
+  toolChanges: number;
+  tools: {
+    tool: number;
+    color: string;
+    name: string;
+    filament: number;
+    weight: number;
+    cost: number;
+  }[];
 }
 export const FEATURE_COLORS = [
   "#478d69",
@@ -96,6 +135,7 @@ export const FEATURE_COLORS = [
   "#6b9fbc",
   "#ba80bc",
   "#b9c0c5",
+  "#cf7955",
 ];
 export const FEATURE_NAMES = [
   "Walls",
@@ -103,4 +143,5 @@ export const FEATURE_NAMES = [
   "Solid layers",
   "Supports",
   "Travel",
+  "Purge tower",
 ];

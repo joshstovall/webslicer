@@ -7,8 +7,8 @@
     {
       "path": "public/engine/kiri-eng.js",
       "url": "https://grid.space/lib/pack/kiri-eng.js",
-      "sha256": "9f7bbfd2ecada83f8394e87efc5027e3f470f8bbe804bba6a52f7c7270fdf7b7",
-      "modified": false
+      "sha256": "3d0d8ae0a5847d1ce9a5fd3114a66a01c5156d6589e40d4f382711b532ae88b1",
+      "modified": true
     },
     {
       "path": "public/engine/kiri-work.js",

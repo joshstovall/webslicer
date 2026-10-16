@@ -1,5 +1,6 @@
 import {
   Accordion,
+  Button,
   NumberInput,
   Select,
   Switch,
@@ -26,6 +27,8 @@ import { useState } from "react";
 import type { Printer, Settings } from "../types";
 import { PRINTERS, MATERIALS, QUALITY } from "../lib/profiles";
 interface Props {
+  filamentCount: number;
+  onFilaments: () => void;
   settings: Settings;
   printer: Printer;
   onChange: (patch: Partial<Settings>) => void;
@@ -35,6 +38,8 @@ interface Props {
   disabled: boolean;
 }
 export function SettingsPanel({
+  filamentCount,
+  onFilaments,
   settings: s,
   printer,
   onChange,
@@ -67,7 +72,19 @@ export function SettingsPanel({
         suffix={suffix}
         decimalScale={step < 0.1 ? 3 : step < 1 ? 2 : 0}
         size="xs"
-        disabled={disabled}
+        disabled={
+          disabled ||
+          (filamentCount > 1 &&
+            [
+              "nozzleTemp",
+              "firstNozzleTemp",
+              "flow",
+              "maxFlow",
+              "density",
+              "cost",
+              "fan",
+            ].includes(key))
+        }
       />
     );
   }
@@ -378,7 +395,7 @@ export function SettingsPanel({
       <div className="material-header">
         <span className="panel-label">Filament</span>
         <Badge color="gray" variant="light" size="xs">
-          1 material
+          {filamentCount} {filamentCount === 1 ? "filament" : "filaments"}
         </Badge>
       </div>
       <div className="material-card">
@@ -415,6 +432,16 @@ export function SettingsPanel({
         />
         <span className="muted small">{printer.filament} mm</span>
       </div>
+      <Button
+        variant="light"
+        size="xs"
+        fullWidth
+        mb="sm"
+        onClick={onFilaments}
+        disabled={disabled}
+      >
+        Manage filaments
+      </Button>
       <div className="process-heading">
         <div>
           <span className="panel-label">Process</span>

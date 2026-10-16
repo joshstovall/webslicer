@@ -22,6 +22,7 @@ function worldModel(
     z = b.min.z;
   const m = createModel(name, g, source.plate);
   m.color = source.color;
+  m.tool = source.tool;
   m.position = [center.x, center.y, ground ? 0 : z];
   return m;
 }

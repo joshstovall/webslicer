@@ -2117,3 +2117,21 @@ a {
     min-height: 40px;
   }
 }
+
+.filament-usage-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.filament-usage-row > span {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  margin-top: 4px;
+  border-radius: 3px;
+}
+.filament-usage-row > p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}

@@ -104,6 +104,14 @@ import { formatDuration, parseGcode } from "./lib/gcode";
 import { slicePlate } from "./lib/slicer";
 import { Viewport } from "./components/Viewport";
 import type { ViewTool } from "./components/Viewport";
+import {
+  createPrintPackage,
+  printThumbnail,
+  readPrintPackage,
+} from "./lib/print-package";
+import { loadVendorPrinter } from "./lib/vendor-printers";
+import { FilamentPanel } from "./components/FilamentPanel";
+import { defaultFilament, DEFAULT_MULTI_MATERIAL } from "./lib/multimaterial";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { cutModel, splitModel } from "./lib/mesh-tools";
 const initialProject = (): Project => ({
@@ -174,7 +182,8 @@ function App() {
     [locked, setLocked] = useState(true),
     [dragging, setDragging] = useState(false),
     [errors, setErrors] = useState<string[]>([]),
-    [importing, setImporting] = useState(false);
+    [importing, setImporting] = useState(false),
+    [loadingPrinter, setLoadingPrinter] = useState(false);
   const [printerDraft, setPrinterDraft] = useState<PrinterType>(
       project.printer,
     ),
@@ -202,6 +211,8 @@ function App() {
   const fileInput = useRef<HTMLInputElement>(null),
     presetInput = useRef<HTMLInputElement>(null),
     abortRef = useRef<AbortController | null>(null);
+  const filaments = project.filaments ?? [defaultFilament(project.settings)];
+  const multiMaterial = project.multiMaterial ?? DEFAULT_MULTI_MATERIAL;
   const activeModels = project.models.filter(
       (m) => m.plate === project.activePlate,
     ),
@@ -375,14 +386,22 @@ function App() {
           notify("Project opened.");
           continue;
         }
-        if (/\.(gcode|gco|g)$/i.test(file.name)) {
+        const printPackage =
+          /\.3mf$/i.test(file.name) && file.size <= 100 * 1024 * 1024
+            ? readPrintPackage(new Uint8Array(await file.arrayBuffer()))
+            : null;
+        if (printPackage || /\.(gcode|gco|g)$/i.test(file.name)) {
           if (file.size > 100 * 1024 * 1024)
             throw new Error("G-code exceeds 100 MB.");
-          const parsed = parseGcode(await file.text(), {
-            diameter: project.printer.filament,
-            density: project.settings.density,
-            cost: project.settings.cost,
-          });
+          const parsed = parseGcode(
+            printPackage?.gcode ?? (await file.text()),
+            {
+              filaments: printPackage?.filaments,
+              diameter: project.printer.filament,
+              density: project.settings.density,
+              cost: project.settings.cost,
+            },
+          );
           if (!parsed.layers.length)
             throw new Error("No extrusion paths found in this G-code.");
           setResult(parsed);
@@ -478,6 +497,8 @@ function App() {
           setStage(label);
         },
         controller.signal,
+        filaments,
+        multiMaterial,
       );
       setResult(sliced);
       setLayer(sliced.layers.length - 1);
@@ -496,12 +517,18 @@ function App() {
     }
   }
   function exportGcode() {
-    if (result)
+    if (!result) return;
+    const name = `${project.name.replace(/[^a-z0-9-_ ]/gi, "")}_plate-${project.activePlate}`;
+    if (project.printer.firmware === "bambu") {
+      const images = {
+        large: printThumbnail(result, project.printer),
+        small: printThumbnail(result, project.printer, 128),
+      };
       download(
-        result.gcode,
-        `${project.name.replace(/[^a-z0-9-_ ]/gi, "")}_plate-${project.activePlate}.gcode`,
-        "text/plain",
+        createPrintPackage(project, result, images) as Uint8Array<ArrayBuffer>,
+        `${name}.gcode.3mf`,
       );
+    } else download(result.gcode, `${name}.gcode`, "text/plain");
   }
   function view(v: string) {
     setViewCommand({ view: v, tick: Date.now() });
@@ -701,13 +728,41 @@ function App() {
   }
   const settingsPanel = (
     <SettingsPanel
+      filamentCount={filaments.length}
+      onFilaments={() => setModal("filaments")}
       settings={project.settings}
       printer={project.printer}
-      disabled={busy || !hydrated}
+      disabled={busy || loadingPrinter || !hydrated}
       onChange={(patch) =>
-        commit((p) => ({ ...p, settings: { ...p.settings, ...patch } }))
+        commit((p) => {
+          const settings = { ...p.settings, ...patch };
+          return {
+            ...p,
+            settings,
+            filaments:
+              p.filaments?.length === 1
+                ? [
+                    {
+                      ...defaultFilament(settings),
+                      name: p.filaments[0].name,
+                      color: p.filaments[0].color,
+                    },
+                  ]
+                : p.filaments,
+          };
+        })
       }
-      onPrinter={(printer) => commit((p) => ({ ...p, printer }))}
+      onPrinter={async (printer) => {
+        setLoadingPrinter(true);
+        try {
+          const loaded = await loadVendorPrinter(printer);
+          commit((p) => ({ ...p, printer: loaded }));
+        } catch (error) {
+          notify((error as Error).message, "red");
+        } finally {
+          setLoadingPrinter(false);
+        }
+      }}
       onEditPrinter={() => {
         setPrinterDraft(structuredClone(project.printer));
         setModal("printer");
@@ -917,14 +972,54 @@ function App() {
               Fit to bed
             </Button>
           </div>
+          {(project.printer.toolCount ?? 1) > 1 && (
+            <Select
+              label="Object filament"
+              size="xs"
+              mb="sm"
+              disabled={busy}
+              data={filaments.map((f, i) => ({
+                value: String(i),
+                label: `${i + 1}. ${f.name}`,
+              }))}
+              value={String(model.tool ?? 0)}
+              allowDeselect={false}
+              onChange={(v) =>
+                v !== null &&
+                updateModel({
+                  tool: Number(v),
+                  color: filaments[Number(v)].color,
+                })
+              }
+            />
+          )}
           <div className="swatches">
-            {COLORS.map((color) => (
+            {(filaments.length > 1
+              ? filaments.map((f) => f.color)
+              : COLORS
+            ).map((color, index) => (
               <button
-                key={color}
-                aria-label={`Set model color ${color}`}
-                className={model.color === color ? "active" : ""}
+                key={index}
+                aria-label={
+                  filaments.length > 1
+                    ? `Assign filament ${index + 1}`
+                    : `Set model color ${color}`
+                }
+                className={
+                  (
+                    filaments.length > 1
+                      ? (model.tool ?? 0) === index
+                      : model.color === color
+                  )
+                    ? "active"
+                    : ""
+                }
                 style={{ background: color }}
-                onClick={() => updateModel({ color })}
+                onClick={() =>
+                  updateModel(
+                    filaments.length > 1 ? { color, tool: index } : { color },
+                  )
+                }
                 disabled={busy}
               />
             ))}
@@ -1169,8 +1264,8 @@ function App() {
           variant="default"
           size="sm"
           onClick={() => fileInput.current?.click()}
-          loading={importing}
-          disabled={busy || !hydrated}
+          loading={importing || loadingPrinter}
+          disabled={busy || loadingPrinter || !hydrated}
         >
           Import model
         </Button>
@@ -1215,7 +1310,11 @@ function App() {
         <aside className="settings-sidebar">{settingsPanel}</aside>
         <main className="workspace">
           <Viewport
-            models={activeModels}
+            models={activeModels.map((m) =>
+              filaments.length > 1
+                ? { ...m, color: filaments[m.tool ?? 0]?.color ?? m.color }
+                : m,
+            )}
             printer={project.printer}
             selected={selected}
             onSelect={setSelected}
@@ -1432,26 +1531,45 @@ function App() {
                   data={[
                     { value: "feature", label: "Color by line type" },
                     { value: "speed", label: "Color by speed" },
+                    { value: "filament", label: "Color by filament" },
                   ]}
                 />
+                {colorMode === "filament" && (
+                  <Stack gap={4} my="sm">
+                    <Text size="xs">{result.toolChanges} tool changes</Text>
+                    {result.tools.map((t) => (
+                      <div className="filament-usage-row" key={t.tool}>
+                        <span style={{ background: t.color }} />
+                        <Text size="xs">
+                          {t.tool + 1}. {t.name} · {t.weight.toFixed(2)} g · $
+                          {t.cost.toFixed(2)}
+                        </Text>
+                      </div>
+                    ))}
+                  </Stack>
+                )}
                 <div className="feature-legend">
-                  {FEATURE_NAMES.slice(0, 4).map((name, i) => (
-                    <button
-                      key={name}
-                      className={
-                        hiddenFeatures.includes(i) ? "hidden-feature" : ""
-                      }
-                      onClick={() =>
-                        setHiddenFeatures((f) =>
-                          f.includes(i) ? f.filter((v) => v !== i) : [...f, i],
-                        )
-                      }
-                    >
-                      <span style={{ background: FEATURE_COLORS[i] }} />
-                      {name}
-                      <Eye size={12} />
-                    </button>
-                  ))}
+                  {FEATURE_NAMES.map((name, i) =>
+                    i === 4 ? null : (
+                      <button
+                        key={name}
+                        className={
+                          hiddenFeatures.includes(i) ? "hidden-feature" : ""
+                        }
+                        onClick={() =>
+                          setHiddenFeatures((f) =>
+                            f.includes(i)
+                              ? f.filter((v) => v !== i)
+                              : [...f, i],
+                          )
+                        }
+                      >
+                        <span style={{ background: FEATURE_COLORS[i] }} />
+                        {name}
+                        <Eye size={12} />
+                      </button>
+                    ),
+                  )}
                 </div>
                 {colorMode === "speed" && (
                   <div className="speed-gradient">
@@ -1677,7 +1795,9 @@ function App() {
                     onClick={exportGcode}
                     size="md"
                   >
-                    Export G-code
+                    {project.printer.firmware === "bambu"
+                      ? "Export print 3MF"
+                      : "Export G-code"}
                   </Button>
                 </>
               ) : (
@@ -1687,8 +1807,12 @@ function App() {
                   rightSection={<ArrowUpRight size={18} />}
                   leftSection={<Layers3 size={17} />}
                   onClick={() => void runSlice()}
-                  disabled={!hydrated || !activeModels.some((m) => m.visible)}
-                  loading={importing}
+                  disabled={
+                    !hydrated ||
+                    loadingPrinter ||
+                    !activeModels.some((m) => m.visible)
+                  }
+                  loading={importing || loadingPrinter}
                 >
                   Slice plate
                 </Button>
@@ -1773,6 +1897,41 @@ function App() {
         </Button>
       </Modal>
       <Modal
+        opened={modal === "filaments"}
+        onClose={() => setModal(null)}
+        title="Filaments & tool changes"
+        size="lg"
+      >
+        <FilamentPanel
+          filaments={filaments}
+          multi={multiMaterial}
+          settings={project.settings}
+          printer={project.printer}
+          usedTools={project.models.map((m) => m.tool ?? 0)}
+          onChange={(filaments, multiMaterial) =>
+            commit((p) => ({
+              ...p,
+              filaments,
+              multiMaterial,
+              settings:
+                filaments.length === 1
+                  ? {
+                      ...p.settings,
+                      material: filaments[0].material,
+                      nozzleTemp: filaments[0].nozzleTemp,
+                      firstNozzleTemp: filaments[0].firstNozzleTemp,
+                      flow: filaments[0].flow,
+                      maxFlow: filaments[0].maxFlow,
+                      density: filaments[0].density,
+                      cost: filaments[0].cost,
+                      fan: filaments[0].fan,
+                    }
+                  : p.settings,
+            }))
+          }
+        />
+      </Modal>
+      <Modal
         opened={modal === "printer"}
         onClose={() => setModal(null)}
         title="Printer configuration"
@@ -1780,9 +1939,24 @@ function App() {
       >
         <Stack gap="md">
           <Alert color="gray" title="Machine-specific setup">
-            These profiles provide build volume and generic Marlin-compatible
-            G-code. Set start and end sequences for your exact machine before
-            printing.
+            {printerDraft.firmware ? (
+              <>
+                This profile uses the manufacturer's machine sequences.{" "}
+                <a
+                  href={printerDraft.profileSource}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View official profile source
+                </a>
+                . The included profile is for a 0.4 mm nozzle.
+              </>
+            ) : (
+              <>
+                Set the build volume, tool system, and G-code sequences for your
+                machine.
+              </>
+            )}
           </Alert>
           <TextInput
             label="Printer name"
@@ -1791,7 +1965,7 @@ function App() {
               setPrinterDraft((p) => ({
                 ...p,
                 name: e.target.value,
-                id: "generic",
+                id: p.firmware ? p.id : "generic",
               }))
             }
           />
@@ -1819,6 +1993,7 @@ function App() {
           <div className="field-pair">
             <Select
               label="Nozzle diameter"
+              disabled={Boolean(printerDraft.firmware)}
               value={String(printerDraft.nozzle)}
               data={["0.2", "0.25", "0.4", "0.6", "0.8", "1"]}
               onChange={(v) =>
@@ -1834,10 +2009,52 @@ function App() {
               }
             />
           </div>
+          <div className="field-pair">
+            <Select
+              label="Tool system"
+              value={printerDraft.multiMaterialMode ?? "single"}
+              disabled={Boolean(printerDraft.firmware)}
+              allowDeselect={false}
+              data={[
+                { value: "single", label: "Single filament" },
+                {
+                  value: "shared-nozzle",
+                  label: "Shared nozzle / color changer",
+                },
+                { value: "toolchanger", label: "Independent toolheads" },
+              ]}
+              onChange={(v) =>
+                v &&
+                setPrinterDraft((p) => ({
+                  ...p,
+                  multiMaterialMode: v as PrinterType["multiMaterialMode"],
+                  toolCount: v === "single" ? 1 : Math.max(2, p.toolCount ?? 4),
+                }))
+              }
+            />
+            <NumberInput
+              label="Filament slots"
+              value={printerDraft.toolCount ?? 1}
+              min={1}
+              max={64}
+              allowDecimal={false}
+              disabled={
+                Boolean(printerDraft.firmware) ||
+                (printerDraft.multiMaterialMode ?? "single") === "single"
+              }
+              onChange={(v) =>
+                typeof v === "number" &&
+                v >= 1 &&
+                v <= 64 &&
+                setPrinterDraft((p) => ({ ...p, toolCount: v }))
+              }
+            />
+          </div>
           <Tabs defaultValue="start">
             <Tabs.List>
               <Tabs.Tab value="start">Start G-code</Tabs.Tab>
               <Tabs.Tab value="end">End G-code</Tabs.Tab>
+              <Tabs.Tab value="change">Tool-change G-code</Tabs.Tab>
             </Tabs.List>
             <Tabs.Panel value="start" pt="sm">
               <Textarea
@@ -1865,10 +2082,28 @@ function App() {
                 }
               />
             </Tabs.Panel>
+            <Tabs.Panel value="change" pt="sm">
+              <Textarea
+                aria-label="Tool-change G-code"
+                autosize
+                minRows={7}
+                maxRows={14}
+                className="code-input"
+                readOnly={printerDraft.firmware === "snapmaker-u1"}
+                value={printerDraft.toolChangeGcode ?? "T{tool}"}
+                onChange={(e) =>
+                  setPrinterDraft((p) => ({
+                    ...p,
+                    toolChangeGcode: e.currentTarget.value,
+                  }))
+                }
+              />
+            </Tabs.Panel>
           </Tabs>
           <Text size="xs" c="dimmed">
             Available placeholders: {"{temp}"}, {"{bed_temp}"}, {"{tool}"}.
-            Output uses absolute XYZ and extrusion.
+            Output uses absolute XYZ. Multi-filament output uses relative
+            extrusion.
           </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setModal(null)}>
@@ -2242,7 +2477,11 @@ function App() {
                   Kiri:Moto engine · GridSpace
                 </a>{" "}
                 ·{" "}
-                <a href={`${import.meta.env.BASE_URL}engine/LICENSE.md`} target="_blank" rel="noreferrer">
+                <a
+                  href={`${import.meta.env.BASE_URL}engine/LICENSE.md`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Engine license
                 </a>
               </Text>

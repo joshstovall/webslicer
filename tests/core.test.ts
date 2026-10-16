@@ -143,9 +143,9 @@ describe("G-code interpreter", () => {
     );
     expect(r.layers).toHaveLength(1);
   });
-  it("does not count priming or unretraction as model filament", () => {
-    const r = parseGcode("G1 E10\nG1 Z0.2\nG1 X10 E11");
-    expect(r.filament).toBe(1);
+  it("includes purge filament without counting unretraction twice", () => {
+    const r = parseGcode("G1 E10\nG1 E9\nG1 E10\nG1 Z0.2\nG1 X10 E11");
+    expect(r.filament).toBe(11);
   });
 });
 describe("slicer settings", () => {

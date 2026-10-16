@@ -1,6 +1,7 @@
 import { get, set } from "idb-keyval";
 import { strToU8, strFromU8, gzipSync, gunzipSync } from "fflate";
 import type { Project, Model } from "../types";
+import { defaultFilament, DEFAULT_MULTI_MATERIAL } from "./multimaterial";
 import { DEFAULT_SETTINGS, PRINTERS } from "./profiles";
 const KEY = "stratum-project-v1";
 export async function saveLocal(p: Project) {
@@ -77,6 +78,7 @@ export function validateProject(p: unknown): Project {
       id: String(m.id),
       name: String(m.name),
       positions: a,
+      tool: m.tool ?? 0,
       color: /^#[a-f0-9]{6}$/i.test(m.color) ? m.color : "#91ad87",
     };
   });
@@ -102,8 +104,55 @@ export function validateProject(p: unknown): Project {
     v.settings.speed <= 0
   )
     throw new Error("Invalid layer height or print speed.");
+  const filaments = v.filaments ?? [defaultFilament(v.settings)];
+  if (!Array.isArray(filaments) || !filaments.length || filaments.length > 64)
+    throw new Error("Invalid filament list.");
+  for (const f of filaments) {
+    if (
+      !f ||
+      typeof f.name !== "string" ||
+      typeof f.material !== "string" ||
+      !/^#[0-9a-f]{6}$/i.test(f.color)
+    )
+      throw new Error("Invalid filament data.");
+    for (const [key, min, max] of [
+      ["nozzleTemp", 150, 350],
+      ["firstNozzleTemp", 150, 350],
+      ["density", 0.5, 3],
+      ["cost", 0, 1000],
+      ["flow", 0.5, 1.5],
+      ["maxFlow", 1, 50],
+      ["fan", 0, 100],
+    ] as const) {
+      if (!Number.isFinite(f[key]) || f[key] < min || f[key] > max)
+        throw new Error(`Invalid filament ${key}.`);
+    }
+  }
+  for (const m of models)
+    if (!Number.isInteger(m.tool) || m.tool < 0 || m.tool >= filaments.length)
+      throw new Error("Invalid model filament assignment.");
+  const multiMaterial = { ...DEFAULT_MULTI_MATERIAL, ...v.multiMaterial };
+  if (
+    !Number.isFinite(multiMaterial.purgeVolume) ||
+    multiMaterial.purgeVolume < 1 ||
+    multiMaterial.purgeVolume > 2000 ||
+    !Number.isInteger(multiMaterial.supportTool) ||
+    multiMaterial.supportTool < 0 ||
+    multiMaterial.supportTool >= filaments.length ||
+    typeof multiMaterial.purgeTower !== "boolean"
+  )
+    throw new Error("Invalid multi-material settings.");
+  if (
+    v.printer.toolCount !== undefined &&
+    (!Number.isInteger(v.printer.toolCount) ||
+      v.printer.toolCount < 1 ||
+      v.printer.toolCount > 64)
+  )
+    throw new Error("Invalid printer tool count.");
   return {
     ...v,
+    filaments,
+    multiMaterial,
     name: String(v.name || "Untitled project"),
     models,
     printer: { ...PRINTERS[0], ...v.printer },
