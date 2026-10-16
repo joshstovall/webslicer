@@ -146,7 +146,9 @@ it("reprojects onto changed tessellation without painting new caps or removed su
     new Matrix4().makeTranslation(0, 0, 10),
   )!;
   expect(supportPaintProjector([wrong])(source.positions)).toBeUndefined();
-});
+  // This executes a real WASM boolean cut and mask reprojection. Shared CI
+  // runners can exceed Vitest's 5s default without a geometry failure.
+}, 15_000);
 it("retains support state area through a transformed cut", () => {
   const base = primitive("cube", 1);
   const paintedSide = {
