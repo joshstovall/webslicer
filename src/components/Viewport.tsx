@@ -193,7 +193,7 @@ export function Viewport(props: ViewportProps) {
     );
     brushRing.name = "paint-brush";
     brushRing.visible = false;
-    brushRing.renderOrder = 10;
+    brushRing.renderOrder = 1000;
     scene.add(brushRing);
     function pick(e: PointerEvent) {
       const r = renderer.domElement.getBoundingClientRect();
@@ -206,6 +206,11 @@ export function Viewport(props: ViewportProps) {
       );
       return raycaster
         .intersectObjects(models.children)
+        .sort((a, b) =>
+          Math.abs(a.distance - b.distance) < 1e-5
+            ? b.object.renderOrder - a.object.renderOrder
+            : a.distance - b.distance,
+        )
         .find((h) => h.object.visible);
     }
     function dab(e: PointerEvent, apply: boolean) {
@@ -286,17 +291,7 @@ export function Viewport(props: ViewportProps) {
         Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5
       )
         return;
-      const r = renderer.domElement.getBoundingClientRect();
-      raycaster.setFromCamera(
-        new THREE.Vector2(
-          ((e.clientX - r.left) / r.width) * 2 - 1,
-          (-(e.clientY - r.top) / r.height) * 2 + 1,
-        ),
-        camera,
-      );
-      const hit = raycaster
-        .intersectObjects(models.children)
-        .find((h) => h.object.visible);
+      const hit = pick(e);
       latest.current.onSelect(hit ? hit.object.userData.id : null);
     };
     renderer.domElement.addEventListener("pointerdown", pointerDown);
@@ -446,10 +441,11 @@ export function Viewport(props: ViewportProps) {
         mesh.geometry.dispose();
         (mesh.material as THREE.Material).dispose();
       }
-    for (const m of props.models) {
+    for (const [priority, m] of props.models.entries()) {
       const surface = m.paintTriangles ?? m.positions;
       let mesh = s.models.children.find((c) => c.userData.id === m.id) as
-        THREE.Mesh | undefined;
+        | THREE.Mesh
+        | undefined;
       if (!mesh) {
         mesh = new THREE.Mesh(
           geometryOf(surface),
@@ -470,6 +466,8 @@ export function Viewport(props: ViewportProps) {
         mesh.userData.positions = surface;
       }
       mesh.userData.assemblyId = m.assemblyId;
+      // Coplanar surfaces and selection agree with material overlap priority.
+      mesh.renderOrder = priority;
       mesh.matrixAutoUpdate = true;
       mesh.position.set(...m.position);
       mesh.rotation.set(

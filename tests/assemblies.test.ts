@@ -116,3 +116,87 @@ it("moving an assembly to a plate moves all of its parts without changing transf
   expect(moved.map((m) => m.plate)).toEqual([2, 2]);
   expect(moved.map((m) => m.position)).toEqual(parts.map((m) => m.position));
 });
+
+import {
+  linkAssembly,
+  unlinkAssembly,
+  changeAssemblyPriority,
+  assemblyParts,
+} from "../src/lib/assemblies";
+function worldVertices(model: ReturnType<typeof primitive>, painted = false) {
+  const positions = painted ? model.paintTriangles! : model.positions;
+  const result: number[] = [],
+    matrix = matrixOf(model);
+  for (let i = 0; i < positions.length; i += 3)
+    result.push(
+      ...new Vector3().fromArray(positions, i).applyMatrix4(matrix).toArray(),
+    );
+  return result;
+}
+it("linking transformed painted parts preserves world geometry, paint, filament and source priority", () => {
+  const a = primitive("cube", 1),
+    b = primitive("cube", 1),
+    other = { ...primitive("cube", 2), assemblyId: "untouched-singleton" };
+  a.position = [20, -10, 3];
+  a.rotation = [10, 20, 30];
+  a.scale = [0.7, 1.4, 2];
+  b.position = [5, 7, 8];
+  b.tool = 2;
+  b.visible = false;
+  a.paintTriangles = a.positions.slice(0, 18);
+  a.faceTools = new Uint8Array([1, 2]);
+  a.paintDepth = 1.2;
+  const sources = [a, other, b];
+  const linked = linkAssembly(sources, [b.id, a.id]);
+  expect(linked.map((m) => m.id)).toEqual(sources.map((m) => m.id));
+  expect(linked[0].assemblyId).toBe(linked[2].assemblyId);
+  expect(linked[1]).toBe(other);
+  for (const i of [0, 2]) {
+    const before = worldVertices(sources[i]),
+      after = worldVertices(linked[i]);
+    expect(
+      Math.max(...before.map((v, j) => Math.abs(v - after[j]))),
+    ).toBeLessThan(0.00002);
+  }
+  expect(worldVertices(linked[0], true)).toEqual(
+    worldVertices(a, true).map((v) => expect.closeTo(v, 4)),
+  );
+  expect(linked[0].faceTools).toBe(a.faceTools);
+  expect(linked[0].paintDepth).toBe(1.2);
+  expect(linked[2].tool).toBe(2);
+  expect(linked[2].visible).toBe(false);
+  expect(linkAssembly(linked, [a.id, b.id])).toBe(linked);
+});
+it("regrouping and detaching parts clean singleton groups and never move remaining parts", () => {
+  const [a, b] = assembly(),
+    c = primitive("cube", 1);
+  const grouped = linkAssembly([a, b, c], [b.id, c.id]);
+  expect(grouped[0].assemblyId).toBeUndefined();
+  expect(grouped[0].positions).toBe(a.positions);
+  const detached = unlinkAssembly(grouped, b.id);
+  expect(detached.every((m) => !m.assemblyId)).toBe(true);
+  expect(detached.map((m) => m.position)).toEqual(
+    grouped.map((m) => m.position),
+  );
+  const triple = linkAssembly([a, b, c], [a.id, b.id, c.id]);
+  const single = unlinkAssembly(triple, b.id);
+  expect(assemblyParts(single, single[0])).toHaveLength(2);
+  expect(single[1].assemblyId).toBeUndefined();
+  const all = unlinkAssembly(triple, a.id, true);
+  expect(all.every((m) => !m.assemblyId)).toBe(true);
+  expect(all.map((m) => m.positions)).toEqual(triple.map((m) => m.positions));
+});
+it("priority changes swap only linked parts, retaining unrelated objects, other plates and bounds", () => {
+  const [a, b] = assembly(),
+    other = primitive("cube", 1),
+    plate2 = { ...primitive("cube", 2), assemblyId: a.assemblyId };
+  const source = [a, other, b, plate2];
+  const swapped = changeAssemblyPriority(source, a.id, 1);
+  expect(swapped).toEqual([b, other, a, plate2]);
+  expect(changeAssemblyPriority(swapped, a.id, 1)).toBe(swapped);
+  expect(changeAssemblyPriority(swapped, a.id, -1)).toEqual(source);
+  expect(() => linkAssembly(source, [a.id, plate2.id])).toThrow("same plate");
+  expect(() => linkAssembly(source, [a.id, "missing"])).toThrow(
+    "no longer exists",
+  );
+});

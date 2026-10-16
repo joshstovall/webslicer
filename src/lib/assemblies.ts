@@ -129,3 +129,74 @@ export function duplicateAssembly(
     position: [m.position[0] + width + 8, m.position[1], m.position[2]] as Vec3,
   }));
 }
+
+function clearSingleAssemblies(models: Model[], affected: Model[]): Model[] {
+  const counts = new Map<string, number>();
+  const key = (m: Model) => `${m.plate}:${m.assemblyId}`;
+  const changed = new Set(affected.filter((m) => m.assemblyId).map(key));
+  for (const m of models)
+    if (m.assemblyId) counts.set(key(m), (counts.get(key(m)) ?? 0) + 1);
+  return models.map((m) =>
+    m.assemblyId && changed.has(key(m)) && counts.get(key(m)) === 1
+      ? { ...m, assemblyId: undefined }
+      : m,
+  );
+}
+
+/** Link chosen parts at their current world positions, preserving source priority. */
+export function linkAssembly(models: Model[], ids: string[]): Model[] {
+  const selected = new Set(ids);
+  const parts = models.filter((m) => selected.has(m.id));
+  if (parts.length !== selected.size)
+    throw new Error("A selected part no longer exists.");
+  if (parts.length < 2) throw new Error("Select at least two parts to link.");
+  if (parts.some((m) => m.plate !== parts[0].plate))
+    throw new Error("Assembly parts must be on the same plate.");
+  if (
+    parts[0].assemblyId &&
+    assemblyParts(models, parts[0]).length === parts.length &&
+    parts.every((m) => m.assemblyId === parts[0].assemblyId)
+  )
+    return models;
+  const linked = new Map(assembleModels(parts).map((m) => [m.id, m]));
+  return clearSingleAssemblies(
+    models.map((m) => linked.get(m.id) ?? m),
+    parts,
+  );
+}
+
+/** Detach one part or dissolve its entire assembly without moving its geometry. */
+export function unlinkAssembly(
+  models: Model[],
+  id: string,
+  whole = false,
+): Model[] {
+  const model = models.find((m) => m.id === id);
+  if (!model?.assemblyId) return models;
+  const ids = new Set(
+    (whole ? assemblyParts(models, model) : [model]).map((m) => m.id),
+  );
+  return clearSingleAssemblies(
+    models.map((m) => (ids.has(m.id) ? { ...m, assemblyId: undefined } : m)),
+    [model],
+  );
+}
+
+/** Later parts win overlaps. Swap only assembly slots, leaving other objects in place. */
+export function changeAssemblyPriority(
+  models: Model[],
+  id: string,
+  direction: -1 | 1,
+): Model[] {
+  const model = models.find((m) => m.id === id);
+  if (!model?.assemblyId) return models;
+  const parts = assemblyParts(models, model);
+  const index = parts.findIndex((m) => m.id === id),
+    other = parts[index + direction];
+  if (!other) return models;
+  const next = [...models],
+    from = models.indexOf(model),
+    to = models.indexOf(other);
+  [next[from], next[to]] = [next[to], next[from]];
+  return next;
+}

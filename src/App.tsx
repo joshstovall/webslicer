@@ -9,6 +9,7 @@ import { editModelSelection } from "./lib/material-edits";
 import type { MaterialEdit } from "./lib/edit-material-regions";
 import { paintSurface, type PaintStroke } from "./lib/surface-paint";
 import { PaintPanel, type PaintSettings } from "./components/PaintPanel";
+import { AssemblyPanel } from "./components/AssemblyPanel";
 import { newId } from "./lib/id";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -989,6 +990,9 @@ function App() {
             <button className="object-select" onClick={() => setSelected(m.id)}>
               <Box size={15} style={{ color: m.color }} />
               <span>{m.name}</span>
+              {m.assemblyId && (
+                <Link size={12} aria-label="Linked assembly part" />
+              )}
             </button>
             <ActionIcon
               size="sm"
@@ -1049,6 +1053,17 @@ function App() {
               }
             />
           )}
+          <Button
+            fullWidth
+            size="xs"
+            variant="light"
+            mb="sm"
+            leftSection={<Link size={14} />}
+            disabled={busy}
+            onClick={() => setModal("assembly")}
+          >
+            Manage assembly
+          </Button>
           <TextInput
             aria-label="Object name"
             value={model.name}
@@ -2148,6 +2163,26 @@ function App() {
         <Button mt="md" onClick={() => setModal(null)}>
           Done
         </Button>
+      </Modal>
+      <Modal
+        opened={modal === "assembly"}
+        onClose={() => setModal(null)}
+        title="Multi-color assembly"
+        centered
+        size="md"
+      >
+        {modal === "assembly" && model && (
+          <AssemblyPanel
+            models={project.models}
+            selected={model}
+            filaments={filaments}
+            onChange={(models) => {
+              commit((p) => ({ ...p, models }));
+              setTransformWholeAssembly(true);
+            }}
+            onDone={() => setModal(null)}
+          />
+        )}
       </Modal>
       <Modal
         opened={modal === "filaments"}
