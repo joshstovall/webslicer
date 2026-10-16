@@ -32,6 +32,8 @@ jobs:
         run: npm run build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
+      - name: Verify the packaged slicing runtime
+        run: npm run verify:runtime
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

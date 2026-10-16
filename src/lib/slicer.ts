@@ -1,4 +1,9 @@
 import { treeSettingErrors } from "./tree-settings";
+import {
+  engineEntry,
+  ENGINE_REVISION,
+  ENGINE_STARTUP_TIMEOUT,
+} from "./engine-runtime";
 import { attachModifiers, modifierErrors } from "./modifiers";
 import { attachSupportPaint, validateSupportPaint } from "./support-paint";
 import { materialCompatibility } from "./material-compatibility";
@@ -74,6 +79,16 @@ export async function slicePlate(
     iframe.hidden = true;
     iframe.title = "Local slicing engine";
     let finished = false;
+    let started = false;
+    const startupTimer = setTimeout(
+      () =>
+        finish(
+          new Error(
+            "Could not load this app's slicing engine. Check your connection, then reload the app and try again.",
+          ),
+        ),
+      ENGINE_STARTUP_TIMEOUT,
+    );
     const timer = setTimeout(
       () =>
         finish(
@@ -85,6 +100,7 @@ export async function slicePlate(
     );
     const cleanup = () => {
       clearTimeout(timer);
+      clearTimeout(startupTimer);
       window.removeEventListener("message", receive);
       signal.removeEventListener("abort", abort);
       iframe.remove();
@@ -203,6 +219,17 @@ export async function slicePlate(
         return;
       const msg = e.data;
       if (msg.type === "ready") {
+        if (started) return;
+        if (msg.revision !== ENGINE_REVISION) {
+          finish(
+            new Error(
+              "The app and slicing engine versions do not match. Reload the app and try again.",
+            ),
+          );
+          return;
+        }
+        started = true;
+        clearTimeout(startupTimer);
         iframe.contentWindow!.postMessage(
           {
             type: "slice",
@@ -249,7 +276,7 @@ export async function slicePlate(
     };
     window.addEventListener("message", receive);
     signal.addEventListener("abort", abort, { once: true });
-    iframe.src = `${import.meta.env.BASE_URL}engine/bridge.html`;
+    iframe.src = engineEntry(import.meta.env.BASE_URL);
     document.body.appendChild(iframe);
     if (signal.aborted) abort();
   });

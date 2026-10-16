@@ -42,7 +42,7 @@
     },
     {
       "path": "public/engine/bridge.js",
-      "sha256": "68fe52e4fddcb56f6d1cb235072d4163e4b25f1e64ba65ffa285ba0ac3cf5ead"
+      "sha256": "9a6da7db6d98a5a84910bd00cc018b255515450092f6dc29e1ae2d3a1a443ac1"
     },
     {
       "path": "public/engine/bridge-cooling.js",

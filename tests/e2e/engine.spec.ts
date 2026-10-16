@@ -66,7 +66,7 @@ test("engine produces distinct real infill patterns and spiral vase layers", asy
     output[0].filament,
   );
 });
-test("automatic normal and legacy tree settings produce normal support extrusion paths", async ({
+test("automatic normal and branching tree settings produce support extrusion paths", async ({
   page,
 }) => {
   await page.goto("/");
@@ -217,7 +217,7 @@ test("multi-extruder engine retains non-contiguous tools and produces a purge to
   expect(result.gcode).not.toMatch(/NaN|undefined|Infinity/);
 });
 
-test("dedicated support filament is used only for supports and purge in normal and legacy tree modes", async ({
+test("dedicated support filament is used only for supports and purge in normal and branching tree modes", async ({
   page,
 }) => {
   await page.goto("/");

@@ -13,16 +13,17 @@ Open the URL Vite prints. In sandboxed environments where native file events are
 
 ```sh
 npm run build
+npm run verify:runtime
 npm run preview
 ```
 
-Deploy the entire `dist/` folder. For a subdirectory, build with `VITE_BASE_PATH=/webslicer/ npm run build`. Preserve the `engine/` and `wasm/` folders and serve `.wasm` as `application/wasm`. No cross-origin isolation headers are required. Fonts and the slicing engine are bundled locally. Selecting a vendor printer initially fetches its pinned official G-code templates. Successfully loaded templates are cached by printer, revision and nozzle diameter for later selection without GitHub connectivity; saved projects also retain them. Browser-local projects are tied to the origin: download a project file before changing hosts or clearing site data.
+Deploy the entire `dist/` folder. For a subdirectory, build with `VITE_BASE_PATH=/webslicer/ npm run build`. Preserve the versioned `runtime/` folder, compatibility `engine/` and `wasm/` folders, and serve `.wasm` as `application/wasm`. Production builds bind the app to a content-hashed engine snapshot; see `docs/runtime-delivery.md` for cache consistency and startup recovery. No cross-origin isolation headers are required. Fonts and the slicing engine are bundled locally. Selecting a vendor printer initially fetches its pinned official G-code templates. Successfully loaded templates are cached by printer, revision and nozzle diameter for later selection without GitHub connectivity; saved projects also retain them. Browser-local projects are tied to the origin: download a project file before changing hosts or clearing site data.
 
 ## GitHub Pages
 
 Live app: https://joshstovall.github.io/webslicer/
 
-The `.github/workflows/deploy.yml` workflow installs locked dependencies, runs core tests, builds with the repository base path, and deploys `dist/` to GitHub Pages on pushes to `main` or manual dispatch. Repository Settings → Pages must use **GitHub Actions** as its source. Node.js 24 is used for CI.
+The `.github/workflows/deploy.yml` workflow installs locked dependencies, runs core tests, builds with the repository base path, verifies the packaged runtime, and deploys `dist/` to GitHub Pages on pushes to `main` or manual dispatch. Repository Settings → Pages must use **GitHub Actions** as its source. Node.js 24 is used for CI.
 
 To check the same build locally:
 

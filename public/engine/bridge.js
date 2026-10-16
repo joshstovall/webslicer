@@ -239,7 +239,12 @@ window.addEventListener("message", async (e) => {
 });
 try {
   ({ Engine, engineClient } = await import("./kiri-eng.js"));
-  send({ type: "ready" });
+  send({
+    type: "ready",
+    revision:
+      document.querySelector('meta[name="stratum-runtime-revision"]')
+        ?.content ?? "development",
+  });
 } catch (error) {
   send({
     type: "error",
